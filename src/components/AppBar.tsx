@@ -4,7 +4,7 @@ import { Appbar } from 'react-native-paper';
 
 export default function AppBar({ title }: { title: string }) {
 	return (
-		<Appbar.Header>
+		<Appbar.Header statusBarHeight={0}>
 			<Appbar.Content title={title} />
 		</Appbar.Header>
 	);

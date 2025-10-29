@@ -27,7 +27,7 @@ export default function LoginScreen({ navigation }: any) {
 		try {
 			setLoading(true);
 			const result = await fakeApi.login(email, password);
-			
+
 			if (!result.success) {
 				setFormError(result.message || 'Đăng nhập thất bại');
 				return;
@@ -37,7 +37,7 @@ export default function LoginScreen({ navigation }: any) {
 			if (result.user) {
 				const setupStatus = await fakeApi.getSetupStatus(result.user.id);
 				const needsSetup = !setupStatus.hasWallet || !setupStatus.hasCurrency || !setupStatus.hasCategories;
-				
+
 				if (needsSetup) {
 					navigation.replace('Setup', { email: result.user.email, userId: result.user.id });
 				} else {
@@ -49,6 +49,18 @@ export default function LoginScreen({ navigation }: any) {
 		} catch (e: any) {
 			setFormError(e.message ?? 'Đã xảy ra lỗi');
 			AccessibilityInfo.announceForAccessibility?.('Lỗi: ' + (e.message ?? 'Đã xảy ra lỗi'));
+		} finally {
+			setLoading(false);
+		}
+	};
+
+	const handleDemoLogin = async () => {
+		try {
+			setLoading(true);
+			const result = await fakeApi.quickLoginDemo();
+			if (result.success && result.user) {
+				navigation.replace('Tabs');
+			}
 		} finally {
 			setLoading(false);
 		}
@@ -98,6 +110,9 @@ export default function LoginScreen({ navigation }: any) {
 						Đăng nhập
 					</Button>
 					{!!formError && <HelperText type="error" style={{ textAlign: 'center', marginBottom: 8 }}>{formError}</HelperText>}
+					<Button mode="outlined" loading={loading} onPress={handleDemoLogin} style={{ alignSelf: 'center', width: '90%', minHeight: 48, justifyContent: 'center', borderRadius: theme.radius.pill, marginBottom: 8 }}>
+						Đăng nhập Demo
+					</Button>
 					{/* Footer switch */}
 					<View style={{ alignItems: 'center', marginTop: theme.spacing(1) }}>
 						<Text style={[theme.semantic.typography.small, { color: theme.colors.onSurfaceVariant }]}>Chưa có tài khoản? <Text onPress={() => navigation.navigate('Register')} style={{ color: theme.colors.primary }}>Đăng ký ngay</Text></Text>
