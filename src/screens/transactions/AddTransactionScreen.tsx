@@ -1,14 +1,16 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
+  KeyboardAvoidingView,
   View,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
   TextInput,
   Alert,
-  KeyboardAvoidingView,
   Platform,
-} from 'react-native';
+} from 'react-native'
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view'
+
 import {
   Text,
   Card,
@@ -25,6 +27,9 @@ import {
 } from 'react-native-paper';
 import { useTheme } from 'react-native-paper';
 import { fakeApi } from '../../services/fakeApi';
+import { useFocusEffect } from '@react-navigation/native';
+import { DatePickerModal } from 'react-native-paper-dates';
+
 
 interface Transaction {
   id: number;
@@ -60,6 +65,7 @@ interface Category {
 
 export default function AddTransactionScreen() {
   const theme = useTheme();
+  const [userName, setUserName] = useState<string>('');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [wallets, setWallets] = useState<Wallet[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -67,28 +73,22 @@ export default function AddTransactionScreen() {
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [balanceVisible, setBalanceVisible] = useState(true);
   const [quickInput, setQuickInput] = useState('');
+  const [quickFocused, setQuickFocused] = useState(false);
+  const quickInputRef = useRef<TextInput>(null);
 
   // actions state
   const [actionTx, setActionTx] = useState<Transaction | null>(null);
   const [showActionsSheet, setShowActionsSheet] = useState(false);
   const [showEditSheet, setShowEditSheet] = useState(false);
-  const [showCopySheet, setShowCopySheet] = useState(false);
   const [editAmount, setEditAmount] = useState('');
   const [editDate, setEditDate] = useState('');
   const [editNote, setEditNote] = useState('');
   const [editCategoryId, setEditCategoryId] = useState<number | null>(null);
   const [editType, setEditType] = useState<'income' | 'expense'>('expense');
-  const [copyAmount, setCopyAmount] = useState('');
-  const [copyDate, setCopyDate] = useState('');
-  const [copyNote, setCopyNote] = useState('');
-  const [copyCategoryId, setCopyCategoryId] = useState<number | null>(null);
-  const [copyType, setCopyType] = useState<'income' | 'expense'>('expense');
   const [showEditCategoryModal, setShowEditCategoryModal] = useState(false);
-  const [showCopyCategoryModal, setShowCopyCategoryModal] = useState(false);
-  const [showEditDateModal, setShowEditDateModal] = useState(false);
-  const [showCopyDateModal, setShowCopyDateModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [userStreak, setUserStreak] = useState(0);
+  const [openEditDatePicker, setOpenEditDatePicker] = useState(false);
 
   const userId = 1;
 
@@ -96,20 +96,46 @@ export default function AddTransactionScreen() {
     let mounted = true;
     (async () => {
       try {
-        const [w, c, s] = await Promise.all([
+        const [w, c, s, cw, u] = await Promise.all([
           fakeApi.getWallets(userId),
           fakeApi.getUserCategories(userId),
           fakeApi.getUserStreak(userId),
+          fakeApi.getCurrentWalletId(userId),
+          fakeApi.getUser(userId),
         ]);
         if (!mounted) return;
         setWallets(w as any);
-        setSelectedWallet((w as any)[0] ?? null);
+        const currentId = (cw as any)?.walletId;
+        const defaultSelection = (w as any).find((x: any) => x.id === currentId) || (w as any)[0] || null;
+        setSelectedWallet(defaultSelection);
         setCategories(c as any);
         if ((s as any)?.success) setUserStreak((s as any).streak || 0);
-      } catch {}
+        if ((u as any)?.success && (u as any)?.user) setUserName((u as any).user.name || 'Người dùng');
+      } catch { }
     })();
     return () => { mounted = false; };
   }, []);
+
+  // Refresh wallets whenever returning to this screen
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      (async () => {
+        try {
+          const [w, cw] = await Promise.all([
+            fakeApi.getWallets(userId),
+            fakeApi.getCurrentWalletId(userId),
+          ]);
+          if (!active) return;
+          setWallets(w as any);
+          const currentId = (cw as any)?.walletId;
+          const selected = (w as any).find((x: any) => x.id === currentId) || (w as any)[0] || null;
+          setSelectedWallet(selected);
+        } catch { }
+      })();
+      return () => { active = false; };
+    }, [])
+  );
 
   // Load transactions when selected wallet changes
   useEffect(() => {
@@ -121,7 +147,7 @@ export default function AddTransactionScreen() {
         const t = await fakeApi.getTransactions(userId, selectedWallet.id);
         if (!mounted) return;
         setTransactions((t as any).map((tx: any) => ({ ...tx, note: tx.content })));
-      } catch {}
+      } catch { }
     })();
     return () => { mounted = false; };
   }, [selectedWallet]);
@@ -163,10 +189,33 @@ export default function AddTransactionScreen() {
     return numericValue ? parseInt(numericValue, 10) : 0;
   };
 
+  // Format date to YYYY-MM-DD without timezone offset (local time)
+  const formatDate = (date: Date | undefined): string => {
+    if (!date) return '';
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // Parse YYYY-MM-DD to Date (local time)
+  const parseDate = (dateString: string): Date | undefined => {
+    if (!dateString || !dateString.match(/^\d{4}-\d{2}-\d{2}$/)) return undefined;
+    const [year, month, day] = dateString.split('-').map(Number);
+    return new Date(year, month - 1, day);
+  };
+
   const getCategoryInfo = (categoryId: number) => {
     const fallback: Category = { id: 0, name: 'Khác', type: 2, icon: 'tag-outline', color: '#64748B' };
     return categories.find(cat => cat.id === categoryId) || fallback;
   };
+
+  const initials = React.useMemo(() => {
+    const parts = (userName || '').trim().split(' ').filter(Boolean);
+    if (parts.length === 0) return 'U';
+    if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+    return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+  }, [userName]);
 
   const handleWalletSelect = (wallet: any) => {
     setSelectedWallet(wallet);
@@ -305,80 +354,13 @@ export default function AddTransactionScreen() {
     }
   }, [actionTx, selectedWallet, editAmount, editDate, editNote, editCategoryId, editType]);
 
-  const openCopy = () => {
-    if (!actionTx) return;
-    setCopyAmount(formatNumberInput(String(Math.abs(actionTx.amount))));
-    setCopyDate(actionTx.transactionDate);
-    setCopyNote((actionTx.note || '').slice(0, 250));
-    setCopyCategoryId(actionTx.userCategoryId);
-    setCopyType(actionTx.type === 1 ? 'income' : 'expense');
-    setShowActionsSheet(false);
-    setShowCopySheet(true);
-  };
-
-  const saveCopy = useCallback(async () => {
-    if (!actionTx || !selectedWallet) return;
-    const amt = parseFormattedNumber(copyAmount);
-    
-    if (amt <= 0) {
-      Alert.alert('Lỗi', 'Số tiền phải lớn hơn 0');
-      return;
-    }
-    
-    setIsLoading(true);
-    
-    try {
-      const result = await fakeApi.createTransaction(userId, {
-        walletId: selectedWallet.id,
-        userCategoryId: copyCategoryId ?? actionTx.userCategoryId,
-        amount: copyType === 'income' ? Math.abs(amt) : -Math.abs(amt),
-        content: (copyNote || '').slice(0, 250),
-        type: copyType === 'income' ? 1 : 2,
-        transactionDate: copyDate,
-      });
-      
-      if (result.success) {
-        // Optimize: Update local state immediately instead of refetching
-        const newTransaction = {
-          id: result.transaction?.id || Date.now(), // Use returned ID or fallback
-          userId: userId,
-          walletId: selectedWallet.id,
-          userCategoryId: copyCategoryId ?? actionTx.userCategoryId,
-          amount: copyType === 'income' ? Math.abs(amt) : -Math.abs(amt),
-          content: (copyNote || '').slice(0, 250),
-          note: (copyNote || '').slice(0, 250),
-          transactionDate: copyDate,
-          type: copyType === 'income' ? 1 : 2,
-          createdAt: new Date().toISOString(),
-        };
-        
-        // Add new transaction to the list
-        setTransactions(prev => [newTransaction, ...prev]);
-        
-        // Update wallet balance locally
-        const newBalance = selectedWallet.amount + newTransaction.amount;
-        const updatedWallet = { ...selectedWallet, amount: newBalance };
-        
-        setSelectedWallet(updatedWallet);
-        setWallets(prev => prev.map(w => 
-          w.id === selectedWallet.id ? updatedWallet : w
-        ));
-        
-        setShowCopySheet(false);
-      }
-    } catch (error) {
-      Alert.alert('Lỗi', 'Có lỗi xảy ra khi tạo giao dịch');
-    } finally {
-      setIsLoading(false);
-    }
-  }, [actionTx, selectedWallet, copyAmount, copyDate, copyNote, copyCategoryId, copyType]);
-
   const confirmDelete = () => {
     setShowActionsSheet(false);
     if (!actionTx || !selectedWallet) return;
     Alert.alert('Xoá giao dịch', 'Bạn có chắc muốn xoá giao dịch này?', [
       { text: 'Hủy', style: 'cancel' },
-      { text: 'Xoá', style: 'destructive', onPress: async () => {
+      {
+        text: 'Xoá', style: 'destructive', onPress: async () => {
         try {
           const result = await fakeApi.deleteTransaction(userId, actionTx.id);
           if (result.success) {
@@ -400,12 +382,13 @@ export default function AddTransactionScreen() {
         } catch (error) {
           Alert.alert('Lỗi', 'Có lỗi xảy ra khi xóa giao dịch');
         }
-      }}
+        }
+      }
     ]);
   };
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}>
+    <View style={styles.container}>
       <View style={{ flex: 1 }}>
       {/* App Bar */}
       <View style={[styles.appBar, { backgroundColor: theme.colors.surface, paddingTop: 0 }]}>
@@ -448,8 +431,9 @@ export default function AddTransactionScreen() {
           </Card.Content>
         </Card>
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+
         {/* Transaction List */}
+        <ScrollView>
         <View style={styles.transactionList}>
           {Object.entries(groupedTransactions).map(([date, transactions]) => (
             <View key={date}>
@@ -496,10 +480,11 @@ export default function AddTransactionScreen() {
                         </View>
                       </Card.Content>
                     </Card>
-                    <Avatar.Image
+                    <Avatar.Text
                       size={40}
-                      source={{ uri: 'https://i.pravatar.cc/150?img=1' }}
-                      style={styles.avatar}
+                      label={initials}
+                      style={[styles.avatar, { backgroundColor: theme.colors.primary }]}
+                      color={theme.colors.onPrimary}
                     />
                     
                   </View>
@@ -510,49 +495,77 @@ export default function AddTransactionScreen() {
           ))}
         </View>
       </ScrollView>
-
       {/* Quick Input Bar */}
+
+        {/* Thanh nhập nhanh luôn nổi ở đáy */}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        style= {{
+          flex: 1,
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+        }}
+      >
       <View style={[styles.quickInputBar, { backgroundColor: theme.colors.surface }]}>
+
+            {quickFocused ? (
+              <IconButton
+                icon="chevron-right"
+                size={18}
+                iconColor="#64748B"
+                style={styles.quickInputIcon}
+                onPress={() => { setQuickFocused(false); quickInputRef.current?.blur(); }}
+              />
+            ) : (
+              <>
         <IconButton
           icon="plus-circle"
-          size={22}
+                  size={18}
           iconColor="#22C55E"
           style={styles.quickInputIcon}
           onPress={handleAddTransaction}
         />
-        
         <IconButton
           icon="camera"
-          size={22}
+                  size={18}
           iconColor="#64748B"
           style={styles.quickInputIcon}
           onPress={handleOCR}
         />
-        
         <IconButton
           icon="microphone"
-          size={22}
+                  size={18}
           iconColor="#64748B"
           style={styles.quickInputIcon}
           onPress={handleVoice}
         />
+              </>
+            )}
         
         <TextInput
-          style={styles.quickInputField}
+              ref={quickInputRef}
+              style={[styles.quickInputField, quickFocused && { marginRight: 8 }]}
           placeholder="Nhập 'đi chơi 90k, cà phê 15k'"
           placeholderTextColor="#9CA3AF"
           value={quickInput}
           onChangeText={setQuickInput}
           multiline
+              onFocus={() => setQuickFocused(true)}
+              onBlur={() => setQuickFocused(false)}
+              textAlignVertical="top"
         />
         
         <IconButton
           icon="send"
-          size={22}
+              size={18}
           iconColor="#22C55E"
           onPress={handleQuickInput}
         />
       </View>
+        </KeyboardAvoidingView>
 
       {/* Wallet Selection Modal */}
       <Portal>
@@ -568,9 +581,6 @@ export default function AddTransactionScreen() {
                 key={wallet.id}
                 title={wallet.name}
                 description={`${formatCurrency(wallet.amount)} ${wallet.currency}`}
-                left={() => (
-                  <View style={[styles.walletColor, { backgroundColor: wallet.color }]} />
-                )}
                 onPress={() => handleWalletSelect(wallet)}
                 style={styles.listItem}
               />
@@ -593,11 +603,6 @@ export default function AddTransactionScreen() {
             onPress={openEdit}
           />
           <List.Item
-            title="Sao chép"
-            left={props => <List.Icon {...props} icon="content-copy" />}
-            onPress={openCopy}
-          />
-          <List.Item
             title="Xoá"
             left={props => <List.Icon {...props} icon="delete" />}
             onPress={confirmDelete}
@@ -612,6 +617,7 @@ export default function AddTransactionScreen() {
           onDismiss={() => setShowEditSheet(false)}
           contentContainerStyle={[styles.sheetContainer]}
         >
+            <KeyboardAwareScrollView enableOnAndroid extraScrollHeight={Platform.OS === 'ios' ? 16 : 32} keyboardShouldPersistTaps="handled">
           <Text style={styles.editTitle}>Chỉnh sửa giao dịch</Text>
           <SegmentedButtons
             value={editType}
@@ -636,11 +642,23 @@ export default function AddTransactionScreen() {
             <Text style={styles.fieldLabel}>Ngày</Text>
             <PaperTextInput
               value={editDate}
-              onChangeText={setEditDate}
-              style={styles.fieldInput}
+              onPressIn={() => setOpenEditDatePicker(true)}
+              right={<PaperTextInput.Icon icon="calendar" onPress={() => setOpenEditDatePicker(true)} />}
+              editable={false}
+              dense={true}
               placeholder="YYYY-MM-DD"
-              onFocus={() => setShowEditDateModal(true)}
-              right={<PaperTextInput.Icon icon="calendar" onPress={() => setShowEditDateModal(true)} />}
+              style={{...styles.fieldInput, height: 36}}
+            />
+                <DatePickerModal
+                locale="vi"
+                mode="single"
+                visible={openEditDatePicker}
+                date={parseDate(editDate)}
+                onDismiss={() => setOpenEditDatePicker(false)}
+                onConfirm={({ date }) => {
+                  if (date) setEditDate(formatDate(date));
+                  setOpenEditDatePicker(false);
+                }}
             />
           </View>
           <View style={styles.fieldRow}>
@@ -671,77 +689,11 @@ export default function AddTransactionScreen() {
               {isLoading ? 'Đang lưu...' : 'Lưu'}
             </Button>
           </View>
+            </KeyboardAwareScrollView>
         </Modal>
       </Portal>
 
-      {/* Copy Modal */}
-      <Portal>
-        <Modal
-          visible={showCopySheet}
-          onDismiss={() => setShowCopySheet(false)}
-          contentContainerStyle={[styles.modalContent]}
-        >
-          <Text style={styles.modalTitle}>Thêm giao dịch từ bản sao</Text>
-          <SegmentedButtons
-            value={copyType}
-            onValueChange={(v: any) => setCopyType(v)}
-            buttons={[
-              { value: 'expense', label: 'Chi', icon: 'minus' },
-              { value: 'income', label: 'Thu', icon: 'plus' },
-            ]}
-            style={{ marginBottom: 12 }}
-          />
-          <View style={styles.fieldRow}>
-            <Text style={styles.fieldLabel}>Số tiền</Text>
-            <TextInput
-              value={copyAmount}
-              onChangeText={(text) => setCopyAmount(formatNumberInput(text))}
-              keyboardType="numeric"
-              style={styles.fieldInput}
-              placeholder="Nhập số tiền (VD: 1,000)"
-            />
-          </View>
-          <View style={styles.fieldRow}>
-            <Text style={styles.fieldLabel}>Ngày</Text>
-            <PaperTextInput
-              value={copyDate}
-              onChangeText={setCopyDate}
-              style={styles.fieldInput}
-              placeholder="YYYY-MM-DD"
-              onFocus={() => setShowCopyDateModal(true)}
-              right={<PaperTextInput.Icon icon="calendar" onPress={() => setShowCopyDateModal(true)} />}
-            />
-          </View>
-          <View style={styles.fieldRow}>
-            <Text style={styles.fieldLabel}>Nội dung (tối đa 250 ký tự)</Text>
-            <TextInput
-              value={copyNote}
-              onChangeText={(t) => setCopyNote((t || '').slice(0, 250))}
-              multiline
-              numberOfLines={4}
-              textAlignVertical="top"
-              style={[styles.fieldInput, { minHeight: 96 }]}
-              placeholder="Nhập nội dung"
-            />
-            <Text style={{ textAlign: 'right', color: '#6B7280', marginTop: 4 }}>{copyNote.length}/250</Text>
-          </View>
-          <View style={styles.fieldRow}>
-            <Text style={styles.fieldLabel}>Danh mục</Text>
-            <Button mode="outlined" onPress={() => setShowCopyCategoryModal(true)}>
-              {(() => {
-                const cat = categories.find(c => c.id === copyCategoryId);
-                return cat ? cat.name : 'Chọn danh mục';
-              })()}
-            </Button>
-          </View>
-          <View style={styles.sheetActions}>
-            <Button mode="outlined" onPress={() => setShowCopySheet(false)} disabled={isLoading}>Huỷ</Button>
-            <Button mode="contained" onPress={saveCopy} loading={isLoading} disabled={isLoading}>
-              {isLoading ? 'Đang lưu...' : 'Lưu'}
-            </Button>
-          </View>
-        </Modal>
-      </Portal>
+        {/* Sao chép: đã loại bỏ theo yêu cầu */}
 
       {/* Edit Category Select */}
       <Portal>
@@ -760,56 +712,11 @@ export default function AddTransactionScreen() {
         </Modal>
       </Portal>
 
-      {/* Copy Category Select */}
-      <Portal>
-        <Modal visible={showCopyCategoryModal} onDismiss={() => setShowCopyCategoryModal(false)} contentContainerStyle={styles.modalContent}>
-          <Text style={styles.modalTitle}>Chọn danh mục</Text>
-          <ScrollView>
-            {(categories.filter(c => (copyType === 'income' ? c.type === 1 : c.type === 2))).map(cat => (
-              <List.Item
-                key={cat.id}
-                title={cat.name}
-                onPress={() => { setCopyCategoryId(cat.id); setShowCopyCategoryModal(false); }}
-                left={props => <List.Icon {...props} icon="folder" color={cat.color} />}
-              />
-            ))}
-          </ScrollView>
-        </Modal>
-      </Portal>
+        {/* Sao chép: đã loại bỏ theo yêu cầu */}
 
-      {/* Simple Date pickers (manual) */}
-      <Portal>
-        <Modal visible={showEditDateModal} onDismiss={() => setShowEditDateModal(false)} contentContainerStyle={styles.modalContent}>
-          <Text style={styles.modalTitle}>Chọn ngày</Text>
-          <List.Item title="Hôm nay" onPress={() => { setEditDate(new Date().toISOString().slice(0,10)); setShowEditDateModal(false); }} left={p => <List.Icon {...p} icon="calendar-today" />} />
-          <List.Item title="Hôm qua" onPress={() => { const d=new Date(); d.setDate(d.getDate()-1); setEditDate(d.toISOString().slice(0,10)); setShowEditDateModal(false); }} left={p => <List.Icon {...p} icon="calendar" />} />
-          <View style={{ paddingHorizontal: 20, paddingTop: 8 }}>
-            <TextInput value={editDate} onChangeText={setEditDate} placeholder="YYYY-MM-DD" style={styles.fieldInput} />
-            <View style={styles.sheetActions}>
-              <Button mode="outlined" onPress={() => setShowEditDateModal(false)}>Đóng</Button>
-              <Button mode="contained" onPress={() => setShowEditDateModal(false)}>Chọn</Button>
-            </View>
-          </View>
-        </Modal>
-      </Portal>
 
-      <Portal>
-        <Modal visible={showCopyDateModal} onDismiss={() => setShowCopyDateModal(false)} contentContainerStyle={styles.modalContent}>
-          <Text style={styles.modalTitle}>Chọn ngày</Text>
-          <List.Item title="Hôm nay" onPress={() => { setCopyDate(new Date().toISOString().slice(0,10)); setShowCopyDateModal(false); }} left={p => <List.Icon {...p} icon="calendar-today" />} />
-          <List.Item title="Hôm qua" onPress={() => { const d=new Date(); d.setDate(d.getDate()-1); setCopyDate(d.toISOString().slice(0,10)); setShowCopyDateModal(false); }} left={p => <List.Icon {...p} icon="calendar" />} />
-          <View style={{ paddingHorizontal: 20, paddingTop: 8 }}>
-            <TextInput value={copyDate} onChangeText={setCopyDate} placeholder="YYYY-MM-DD" style={styles.fieldInput} />
-            <View style={styles.sheetActions}>
-              <Button mode="outlined" onPress={() => setShowCopyDateModal(false)}>Đóng</Button>
-              <Button mode="contained" onPress={() => setShowCopyDateModal(false)}>Chọn</Button>
-            </View>
-          </View>
-        </Modal>
-      </Portal>
-
-      </View>
-    </KeyboardAvoidingView>
+      </View >
+    </View >
   );
 }
 
@@ -969,22 +876,18 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   quickInputBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    elevation: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    elevation: 6,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
   },
   quickInputIcon: {
-    marginRight: 8,
+    marginRight: 0,
   },
   quickInputField: {
     flex: 1,
@@ -993,8 +896,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     fontSize: 16,
-    maxHeight: 80,
-    marginRight: 8,
+    maxHeight: 120,
+    marginRight: 2,
   },
   modalContent: {
     backgroundColor: 'white',

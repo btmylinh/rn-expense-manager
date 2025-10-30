@@ -5,6 +5,8 @@ import { Avatar, Button, Divider, List, Portal, Dialog, TextInput, Text } from '
 import { useAppTheme } from '../../theme';
 import AppBar from '../../components/AppBar';
 import { fakeApi } from '../../services/fakeApi';
+import WalletManagerSheet from '../../components/WalletManagerSheet';
+import CategoryManagerSheet from '../../components/CategoryManagerSheet';
 
 export default function ProfileScreen({ navigation }: any) {
 	const theme = useAppTheme();
@@ -14,18 +16,31 @@ export default function ProfileScreen({ navigation }: any) {
 	const [editVisible, setEditVisible] = useState(false);
 	const [editName, setEditName] = useState('');
 	const [editEmail, setEditEmail] = useState('');
+	const [pwdVisible, setPwdVisible] = useState(false);
+	const [curPwd, setCurPwd] = useState('');
+	const [newPwd, setNewPwd] = useState('');
+	const [cfmPwd, setCfmPwd] = useState('');
 	const userId = 1; // Demo user id
+
+	// Wallet management state (delegated to component)
+	const [walletSheetVisible, setWalletSheetVisible] = useState(false);
+	const [currentWalletId, setCurrentWalletId] = useState<number | undefined>(undefined);
+	const [categorySheetVisible, setCategorySheetVisible] = useState(false);
 
 	useEffect(() => {
 		let mounted = true;
 		const load = async () => {
 			try {
 				setLoading(true);
-				const res = await fakeApi.getUser(userId);
+				const [res, cw] = await Promise.all([
+					fakeApi.getUser(userId),
+					fakeApi.getCurrentWalletId(userId)
+				]);
 				if (mounted && res.success && res.user) {
 					setUserName(res.user.name || 'Người dùng');
 					setUserEmail(res.user.email || '');
 				}
+				if (mounted && (cw as any)?.walletId) setCurrentWalletId((cw as any).walletId);
 			} finally {
 				setLoading(false);
 			}
@@ -74,6 +89,8 @@ export default function ProfileScreen({ navigation }: any) {
 		]);
 	};
 
+
+
 	return (
 		<View style={{ flex: 1}}>
 			<AppBar title="Hồ sơ" />
@@ -85,9 +102,6 @@ export default function ProfileScreen({ navigation }: any) {
 					{userEmail ? (
 						<Text style={[theme.semantic.typography.small, { color: theme.colors.onSurfaceVariant, marginTop: 4 }]}>{userEmail}</Text>
 					) : null}
-					<Button mode="outlined" onPress={openEdit} style={{ marginTop: theme.spacing(2), borderRadius: theme.radius.pill }} icon="pencil">
-						Chỉnh sửa
-					</Button>
 				</View>
 
 				{/* Sections */}
@@ -95,28 +109,30 @@ export default function ProfileScreen({ navigation }: any) {
 					<List.Subheader>Quản lý tài khoản</List.Subheader>
 					<List.Item
 						title="Thông tin cá nhân"
-						description="Xem và cập nhật tên, email"
 						left={props => <List.Icon {...props} icon="account-circle-outline" />}
 						onPress={openEdit}
 					/>
 					<Divider />
 					<List.Item
 						title="Ví của tôi"
-						description="Quản lý ví"
 						left={props => <List.Icon {...props} icon="wallet-outline" />}
-						onPress={() => Alert.alert('Ví của tôi', 'Tính năng sẽ được bổ sung')}
+						onPress={() => setWalletSheetVisible(true)}
 					/>
 					<Divider />
 					<List.Item
 						title="Danh mục của tôi"
-						description="Quản lý danh mục thu/chi"
 						left={props => <List.Icon {...props} icon="tag-outline" />}
-						onPress={() => Alert.alert('Danh mục của tôi', 'Tính năng sẽ được bổ sung')}
+						onPress={() => setCategorySheetVisible(true)}
+					/>
+					<Divider />
+					<List.Item
+						title="Đổi mật khẩu"
+						left={props => <List.Icon {...props} icon="key-variant" />}
+						onPress={() => setPwdVisible(true)}
 					/>
 					<Divider />
 					<List.Item
 						title="Đăng xuất"
-						description="Thoát khỏi tài khoản hiện tại"
 						left={props => <List.Icon {...props} icon="logout" />}
 						onPress={handleLogout}
 					/>
@@ -136,6 +152,7 @@ export default function ProfileScreen({ navigation }: any) {
 							style={{ marginBottom: theme.spacing(2) }}
 						/>
 						<TextInput
+							disabled
 							label="Email"
 							value={editEmail}
 							onChangeText={setEditEmail}
@@ -150,6 +167,74 @@ export default function ProfileScreen({ navigation }: any) {
 					</Dialog.Actions>
 				</Dialog>
 			</Portal>
+
+			{/* Change Password dialog */}
+			<Portal>
+				<Dialog visible={pwdVisible} onDismiss={() => setPwdVisible(false)}>
+					<Dialog.Title>Đổi mật khẩu</Dialog.Title>
+					<Dialog.Content>
+						<TextInput
+							label="Mật khẩu hiện tại"
+							value={curPwd}
+							onChangeText={setCurPwd}
+							secureTextEntry
+							left={<TextInput.Icon icon="lock" />}
+							style={{ marginBottom: theme.spacing(2) }}
+						/>
+						<TextInput
+							label="Mật khẩu mới"
+							value={newPwd}
+							onChangeText={setNewPwd}
+							secureTextEntry
+							left={<TextInput.Icon icon="lock-reset" />}
+							style={{ marginBottom: theme.spacing(2) }}
+						/>
+						<TextInput
+							label="Xác nhận mật khẩu mới"
+							value={cfmPwd}
+							onChangeText={setCfmPwd}
+							secureTextEntry
+							left={<TextInput.Icon icon="check" />}
+						/>
+					</Dialog.Content>
+					<Dialog.Actions>
+						<Button onPress={() => setPwdVisible(false)}>Hủy</Button>
+						<Button onPress={async () => {
+							if (!curPwd || !newPwd || !cfmPwd) { Alert.alert('Lỗi', 'Vui lòng điền đầy đủ'); return; }
+							if (newPwd.length < 6) { Alert.alert('Lỗi', 'Mật khẩu mới phải từ 6 ký tự'); return; }
+							if (newPwd !== cfmPwd) { Alert.alert('Lỗi', 'Xác nhận mật khẩu không khớp'); return; }
+							try {
+								setLoading(true);
+								const res = await fakeApi.updatePassword(userId, curPwd, newPwd);
+								if ((res as any).success) {
+									Alert.alert('Thành công', 'Đổi mật khẩu thành công');
+									setPwdVisible(false);
+									setCurPwd(''); setNewPwd(''); setCfmPwd('');
+								} else {
+									Alert.alert('Lỗi', (res as any).message || 'Đổi mật khẩu thất bại');
+								}
+							} finally {
+								setLoading(false);
+							}
+						}} loading={loading}>Lưu</Button>
+					</Dialog.Actions>
+				</Dialog>
+			</Portal>
+
+			{/* Wallet manager (componentized) */}
+			<WalletManagerSheet
+				userId={userId}
+				visible={walletSheetVisible}
+				onDismiss={() => setWalletSheetVisible(false)}
+				onWalletChanged={(id) => setCurrentWalletId(id)}
+			/>
+
+			<CategoryManagerSheet
+				userId={userId}
+				visible={categorySheetVisible}
+				onDismiss={() => setCategorySheetVisible(false)}
+			/>
+
 		</View>
 	);
 }

@@ -2,6 +2,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { View, ScrollView} from 'react-native';
 import { Button, TextInput, Text, Chip, RadioButton, ProgressBar, Snackbar, Portal, Dialog, IconButton } from 'react-native-paper';
+import CategoryCreateForm from '../../components/CategoryCreateForm';
 import { useAppTheme } from '../../theme';
 import { fakeApi } from '../../services/fakeApi';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -15,11 +16,11 @@ export default function AfterRegisterSetupScreen({ route, navigation }: any) {
 	const progress = step / totalSteps;
 	const [snack, setSnack] = useState<string | null>(null);
 
-	// Step 1: Wallet
+	// Step 1: Wallet (collect only, defer API)
 	const [walletName, setWalletName] = useState('Ví chính');
 	const [walletAmount, setWalletAmount] = useState('0');
 
-	// Step 2: Currency
+	// Step 2: Currency (collect only, defer API)
 	const [currency, setCurrency] = useState<string>('VND');
 
 	// Step 3: Categories
@@ -28,7 +29,7 @@ export default function AfterRegisterSetupScreen({ route, navigation }: any) {
 	const incomeSuggestions = useMemo(() => suggestionItems.filter(c => c.type === 1), [suggestionItems]);
 	const expenseSuggestions = useMemo(() => suggestionItems.filter(c => c.type === 2), [suggestionItems]);
 
-	// Custom categories
+	// Custom categories (collected locally, defer API)
 	const [customCats, setCustomCats] = useState<Array<{ name: string; type: number; icon: string }>>([]);
 	const [selectedCustomIdx, setSelectedCustomIdx] = useState<number[]>([]);
 
@@ -36,35 +37,18 @@ export default function AfterRegisterSetupScreen({ route, navigation }: any) {
 	const [modalVisible, setModalVisible] = useState(false);
 	const [newType, setNewType] = useState<number>(2);
 	const [newCategoryName, setNewCategoryName] = useState('');
-    const iconChoices: string[] = [
-        // 🍔 Ăn uống
-        'food', 'food-fork-drink', 'coffee', 'beer', 'cup', 'silverware-fork-knife',
-      
-        // 🚗 Di chuyển
-        'bus', 'car', 'motorbike', 'gas-station', 'taxi', 'train', 'airplane',
-      
-        // 🏠 Nhà cửa, sinh hoạt
-        'home', 'lightbulb', 'water', 'sofa', 'broom', 'tools',
-      
-        // 🛍️ Mua sắm
-        'shopping', 'cart', 'bag-personal', 'shoe-sneaker', 'tshirt-crew', 'tag-outline',
-      
-        // 💳 Tài chính
-        'wallet', 'credit-card', 'bank', 'currency-usd', 'piggy-bank', 'chart-line',
-      
-        // 🎮 Giải trí
-        'movie-open', 'gamepad-variant', 'music', 'ticket', 'book-open-page-variant',
-      
-        // ❤️ Cá nhân & Sức khỏe
-        'heart', 'dumbbell', 'meditation', 'pill', 'spa', 'sleep',
-      
-        // 🎓 Học tập
-        'school', 'laptop', 'book', 'pencil', 'library',
-      
-        // 🐶 Khác
-        'gift', 'party-popper', 'dog', 'cat', 'leaf'
-      ];
-        const [newIcon, setNewIcon] = useState<string>('tag-outline');
+	const iconChoices: string[] = [
+		'food', 'food-fork-drink', 'coffee', 'beer', 'cup', 'silverware-fork-knife',
+		'bus', 'car', 'motorbike', 'gas-station', 'taxi', 'train', 'airplane',
+		'home', 'lightbulb', 'water', 'sofa', 'broom', 'tools',
+		'shopping', 'cart', 'bag-personal', 'shoe-sneaker', 'tshirt-crew', 'tag-outline',
+		'wallet', 'credit-card', 'bank', 'currency-usd', 'piggy-bank', 'chart-line',
+		'movie-open', 'gamepad-variant', 'music', 'ticket', 'book-open-page-variant',
+		'heart', 'dumbbell', 'meditation', 'pill', 'spa', 'sleep',
+		'school', 'laptop', 'book', 'pencil', 'library',
+		'gift', 'party-popper', 'dog', 'cat', 'leaf'
+	];
+	const [newIcon, setNewIcon] = useState<string>('tag-outline');
 
 	// Load categories on mount
 	useEffect(() => {
@@ -72,8 +56,7 @@ export default function AfterRegisterSetupScreen({ route, navigation }: any) {
 			try {
 				const categories = await fakeApi.getCategories();
 				setSuggestionItems(categories);
-				// Select first 2 categories by default
-				setSelectedCategoryIds(categories.slice(0, 2).map(c => c.id));
+				setSelectedCategoryIds(categories.slice(0, 2).map((c: any) => c.id));
 			} catch (error) {
 				console.error('Failed to load categories:', error);
 			}
@@ -93,14 +76,6 @@ export default function AfterRegisterSetupScreen({ route, navigation }: any) {
 		setNewIcon('tag-outline');
 		setModalVisible(true);
 	};
-	const onSaveCustom = () => {
-		const name = newCategoryName.trim();
-		if (!name) return;
-		const item = { name, type: newType, icon: newIcon };
-		setCustomCats(prev => [...prev, item]);
-		setSelectedCustomIdx(prev => [...prev, customCats.length]);
-		setModalVisible(false);
-	};
 
 	const onBack = () => {
 		if (step > 1) setStep(step - 1);
@@ -115,41 +90,29 @@ export default function AfterRegisterSetupScreen({ route, navigation }: any) {
 
 	const onNext = async () => {
 		if (step === 1) {
-			try {
-				const result = await fakeApi.createWallet(userId, walletName.trim() || 'Ví', Number(walletAmount) || 0, currency);
-				if (result.success) {
-					setStep(2);
-				} else {
-					setSnack('Tạo ví thất bại');
-				}
-			} catch (error) {
-				setSnack('Tạo ví thất bại');
-			}
+			// Defer wallet creation to final step
+			setStep(2);
 			return;
 		}
 		if (step === 2) {
-			try {
-				const result = await fakeApi.setCurrency(userId, currency);
-				if (result.success) {
-					setStep(3);
-				} else {
-					setSnack('Cập nhật tiền tệ thất bại');
-				}
-			} catch (error) {
-				setSnack('Cập nhật tiền tệ thất bại');
-			}
+			// Defer currency save to final step
+			setStep(3);
 			return;
 		}
 		if (step === 3) {
 			try {
-				// Add selected suggestion categories
+				// 1) Create wallet
+				await fakeApi.createWallet(userId, (walletName || 'Ví').trim(), Number(walletAmount) || 0, currency);
+				// 2) Set currency (if you still want a global setting)
+				await fakeApi.setCurrency(userId, currency);
+				// 3) Add selected suggestion categories
 				for (const id of selectedCategoryIds) {
 					const cat = suggestionItems.find(c => c.id === id);
 					if (cat) {
 						await fakeApi.addCategory(userId, cat.name, cat.type, cat.icon ?? undefined);
 					}
 				}
-				// Add custom categories
+				// 4) Add custom categories collected during setup
 				for (const idx of selectedCustomIdx) {
 					const c = customCats[idx];
 					if (c) {
@@ -159,7 +122,7 @@ export default function AfterRegisterSetupScreen({ route, navigation }: any) {
 				setSnack('Thiết lập thành công!');
 				setTimeout(() => navigation.replace('Tabs'), 700);
 			} catch (error) {
-				setSnack('Thiết lập danh mục thất bại');
+				setSnack('Thiết lập thất bại, vui lòng thử lại');
 			}
 		}
 	};
@@ -209,7 +172,7 @@ export default function AfterRegisterSetupScreen({ route, navigation }: any) {
 
 			{step === 3 && (
 				<View style={{ gap: theme.spacing(2) }}>
-                    <View style={{ alignItems: 'center' }}>
+					<View style={{ alignItems: 'center' }}>
 						<MaterialCommunityIcons name="folder-outline" size={48} color={theme.colors.primary} />
 					</View>
 					<Text style={theme.semantic.typography.h3}>Chọn phân loại giao dịch</Text>
@@ -219,7 +182,7 @@ export default function AfterRegisterSetupScreen({ route, navigation }: any) {
 						<IconButton
 							icon="plus"
 							mode="contained"
-                            size={20}
+							size={20}
 							containerColor={theme.colors.primary}
 							iconColor={theme.colors.onPrimary}
 							onPress={() => openAddModal(1)}
@@ -277,40 +240,26 @@ export default function AfterRegisterSetupScreen({ route, navigation }: any) {
 
 			{/* Actions */}
 			<View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: theme.spacing(2) }}>
-				<Button mode="text" onPress={onBack}>Quay lại</Button>
+				{step > 1 ? (
+					<Button mode="text" onPress={onBack}>Quay lại</Button>
+				) : <View />}
 				<Button mode="contained" onPress={onNext} disabled={step === 3 && !canComplete}>{step < totalSteps ? 'Tiếp tục' : 'Hoàn tất'}</Button>
 			</View>
 
 			{/* Modal add new category */}
-			<Portal>
-				<Dialog visible={modalVisible} onDismiss={() => setModalVisible(false)}>
-					<Dialog.Title>Tạo danh mục mới</Dialog.Title>
-					<Dialog.Content>
-						<TextInput label="Tên danh mục" value={newCategoryName} onChangeText={setNewCategoryName} autoCapitalize="none" autoCorrect={false} />
-						<View style={{ height: theme.spacing(2) }} />
-						<Text style={theme.semantic.typography.small}>Chọn icon</Text>
-						<ScrollView
-                            style={{ maxHeight: 180, marginTop: 6 }}
-                            contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-							{iconChoices.map(ic => (
-								<IconButton
-									key={ic}
-									icon={ic as any}
-									mode={newIcon === ic ? 'contained' : 'outlined'}
-									containerColor={newIcon === ic ? theme.colors.primary : undefined}
-									iconColor={newIcon === ic ? theme.colors.onPrimary : theme.colors.onSurface}
-									onPress={() => setNewIcon(ic)}
-									style={{ borderRadius: theme.radius.pill, transform: [{ scale: newIcon === ic ? 1.07 : 1 }] }}
-								/>
-							))}
-						</ScrollView>
-					</Dialog.Content>
-					<Dialog.Actions>
-						<Button onPress={() => setModalVisible(false)}>Hủy</Button>
-						<Button onPress={onSaveCustom}>Lưu danh mục</Button>
-					</Dialog.Actions>
-				</Dialog>
-			</Portal>
+			<CategoryCreateForm
+				visible={modalVisible}
+				onDismiss={() => setModalVisible(false)}
+				initialType={newType === 1 ? 'income' : 'expense'}
+				allowTypeChange={false}
+				onSubmit={({ name, type, icon }) => {
+					// Lưu tạm theo loại đã chọn từ nút + (không cho đổi trong form)
+					const forcedType = newType; // 1 thu, 2 chi
+					const item = { name, type: forcedType, icon } as any;
+					setCustomCats(prev => [...prev, item]);
+					setSelectedCustomIdx(prev => [...prev, (prev.length ? Math.max(...prev) : -1) + 1]);
+				}}
+			/>
 
 			<Snackbar visible={!!snack} onDismiss={() => setSnack(null)} duration={800}>{snack}</Snackbar>
 		</View>

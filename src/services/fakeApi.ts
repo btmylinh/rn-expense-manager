@@ -4,90 +4,60 @@ const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 // Simple in-memory storage
 let users: Array<{id: number, email: string, password: string, verified?: boolean, name?: string}> = [];
 let pendingOtps: Array<{email: string, otp: string, expires: number}> = [];
-let wallets: Array<{id: number, userId: number, name: string, amount: number, currency: string, color?: string}> = [];
+let wallets: Array<{id: number, userId: number, name: string, amount: number, currency: string, color?: string, is_default?: boolean | number}> = [];
+let currentWalletByUser: Record<number, number | undefined> = {};
 let categories: Array<{id: number, name: string, type: number, icon: string, color?: string}> = [];
 let userCategories: Array<{id: number, userId: number, name: string, type: number, icon: string, color?: string}> = [];
 let userSettings: Array<{userId: number, currency: string}> = [];
 let transactions: Array<{id: number, userId: number, walletId: number, userCategoryId: number, amount: number, transactionDate: string, content: string, type: number}> = [];
+let currentUserId: number | null = null;
 
-// Initialize mock data
+// Initialize mock data deterministically from JSON (map snake_case -> camelCase)
 const mockUserId = 1;
-
-// Add default user
-users = [
-	{ id: mockUserId, email: 'user@example.com', password: '123456', verified: true, name: 'Người dùng' }
-];
-
-// Add colors to wallets - balances will be calculated from transactions
-wallets = [
-	{ id: 1, userId: mockUserId, name: 'Ví chính', amount: 0, currency: 'VND', color: '#3B82F6' },
-	{ id: 2, userId: mockUserId, name: 'Ví tiết kiệm', amount: 0, currency: 'VND', color: '#10B981' }
-];
-
-// Add colors to user categories
-userCategories = [
-	{ id: 1, userId: mockUserId, name: 'Ăn uống', type: 2, icon: 'silverware-fork-knife', color: '#F59E0B' },
-	{ id: 2, userId: mockUserId, name: 'Giải trí', type: 2, icon: 'gamepad-variant-outline', color: '#8B5CF6' },
-	{ id: 3, userId: mockUserId, name: 'Di chuyển', type: 2, icon: 'car-outline', color: '#06B6D4' },
-	{ id: 4, userId: mockUserId, name: 'Lương', type: 1, icon: 'briefcase-outline', color: '#10B981' },
-	{ id: 5, userId: mockUserId, name: 'Thưởng', type: 1, icon: 'gift-outline', color: '#F97316' },
-];
-
-// Generate more realistic transaction data
-const generateMockTransactions = () => {
-	const today = new Date();
-	const transactions = [];
-	let id = 1;
-
-	// Generate transactions for the last 30 days
-	for (let i = 0; i < 30; i++) {
-		const date = new Date(today);
-		date.setDate(date.getDate() - i);
-		const dateStr = date.toISOString().split('T')[0];
-
-		// Random number of transactions per day (0-4)
-		const transactionsPerDay = Math.floor(Math.random() * 5);
-		
-		for (let j = 0; j < transactionsPerDay; j++) {
-			const isIncome = Math.random() < 0.2; // 20% chance of income
-			const categoryId = isIncome ? 
-				(Math.random() < 0.5 ? 4 : 5) : // Lương or Thưởng
-				(Math.floor(Math.random() * 3) + 1); // Ăn uống, Giải trí, or Di chuyển
-			
-			const amounts = isIncome ? 
-				[500000, 1000000, 2000000, 5000000] : // Income amounts
-				[15000, 25000, 50000, 100000, 150000, 200000]; // Expense amounts
-			
-			const descriptions = isIncome ?
-				['Lương tháng', 'Thưởng cuối năm', 'Tiền thưởng', 'Lãi ngân hàng'] :
-				['Ăn trưa', 'Cà phê', 'Xem phim', 'Mua sắm', 'Xăng xe', 'Đi chơi', 'Ăn tối', 'Mua đồ'];
-
-			const amount = amounts[Math.floor(Math.random() * amounts.length)];
-			const description = descriptions[Math.floor(Math.random() * descriptions.length)];
-
-			transactions.push({
-				id: id++,
-				userId: mockUserId,
-				walletId: Math.random() < 0.8 ? 1 : 2, // 80% main wallet, 20% savings
-				userCategoryId: categoryId,
-				amount: isIncome ? amount : -amount,
-				transactionDate: dateStr,
-				content: description,
-				type: isIncome ? 1 : 2
-			});
-		}
+try {
+	// eslint-disable-next-line @typescript-eslint/no-var-requires
+	const seed = require('./mockData.json');
+	users = seed.users || users;
+	if (seed.user_settings) {
+		userSettings = seed.user_settings.map((s: any) => ({ userId: s.user_id, currency: s.currency }));
 	}
+	if (seed.wallets) {
+		wallets = seed.wallets.map((w: any) => ({
+			id: w.id,
+			userId: w.user_id,
+			name: w.name,
+			amount: w.amount,
+			currency: w.currency,
+			color: w.color,
+			is_default: w.is_default,
+		}));
+	}
+	if (seed.currentWalletByUser) currentWalletByUser = seed.currentWalletByUser;
+	categories = seed.categories || categories;
+	if (seed.user_categories) {
+		userCategories = seed.user_categories.map((c: any) => ({ id: c.id, userId: c.user_id, name: c.name, type: c.type, icon: c.icon, color: c.color }));
+	}
+	if (seed.transactions) {
+		transactions = seed.transactions.map((t: any) => ({
+			id: t.id,
+			userId: t.user_id,
+			walletId: t.wallet_id,
+			userCategoryId: t.user_category_id,
+			amount: t.amount,
+			transactionDate: t.transaction_date,
+			content: t.content,
+			type: t.type,
+		}));
+	}
+} catch {}
 
-	return transactions;
-};
-
-transactions = generateMockTransactions();
-
-// Calculate wallet balances from transactions
+// Calculate wallet balances from transactions + keep seeded starting amounts if present
 const calculateWalletBalances = () => {
 	wallets.forEach(wallet => {
 		const walletTransactions = transactions.filter(t => t.walletId === wallet.id && t.userId === wallet.userId);
-		wallet.amount = walletTransactions.reduce((sum, t) => sum + t.amount, 0);
+		const txSum = walletTransactions.reduce((sum, t) => sum + t.amount, 0);
+		if (typeof wallet.amount !== 'number') wallet.amount = 0;
+		if (wallet.amount === 0) wallet.amount = txSum; // if seed amount not set, derive from tx
 	});
 };
 
@@ -107,8 +77,10 @@ const defaultCategories = [
 	{ id: 10, name: 'Sức khỏe', type: 2, icon: 'hospital-box-outline', color: '#EF4444' },
 ];
 
-// Initialize default categories
-categories = [...defaultCategories];
+// Initialize default categories if not already
+if (!categories || categories.length === 0) {
+	categories = [...defaultCategories];
+}
 
 // Helper to generate OTP
 const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
@@ -137,6 +109,7 @@ export const fakeApi = {
 		if (!user) {
 			return { success: false, message: 'Không tìm thấy tài khoản demo' };
 		}
+		currentUserId = user.id;
 		return { success: true, token: 'fake-token', user: { id: user.id, email: user.email } };
 	},
 
@@ -166,6 +139,7 @@ export const fakeApi = {
 		if (!user.verified) {
 			return { success: false, message: 'Email chưa được xác thực' };
 		}
+		currentUserId = user.id;
 		return { success: true, token: 'fake-token', user: { id: user.id, email: user.email } };
 	},
 
@@ -176,6 +150,10 @@ export const fakeApi = {
 			return { success: false, message: 'Email không tồn tại' };
 		}
 		return { success: true, message: 'Đã gửi email đặt lại mật khẩu' };
+	},
+
+	getCurrentUserId() {
+		return currentUserId;
 	},
 
 	// Setup
@@ -195,8 +173,15 @@ export const fakeApi = {
 
 	async createWallet(userId: number, name: string, amount: number, currency: string) {
 		await delay(300);
-		const wallet = { id: wallets.length + 1, userId, name, amount, currency };
+		// simple name-duplicate check per user
+		if (wallets.some(w => w.userId === userId && w.name.trim().toLowerCase() === name.trim().toLowerCase())) {
+			return { success: false, message: 'Tên ví đã tồn tại' } as any;
+		}
+		const wallet = { id: wallets.length + 1, userId, name, amount, currency, is_default: wallets.every(w => w.userId !== userId) };
 		wallets.push(wallet);
+		if (!currentWalletByUser[userId]) {
+			currentWalletByUser[userId] = wallet.id;
+		}
 		return { success: true, wallet };
 	},
 
@@ -219,9 +204,25 @@ export const fakeApi = {
 	},
 
 	// Transactions
-	async getWallets(userId: number) {
+	async getWallets(userId?: number) {
 		await delay(200);
-		return wallets.filter(w => w.userId === userId);
+		const uid = userId ?? currentUserId ?? mockUserId;
+		return wallets.filter(w => w.userId === uid);
+	},
+
+	async getCurrentWalletId(userId?: number) {
+		await delay(100);
+		const uid = userId ?? currentUserId ?? mockUserId;
+		const current = currentWalletByUser[uid] ?? wallets.find(w => w.userId === uid && (w.is_default === 1 || w.is_default === true))?.id;
+		return { success: true, walletId: current };
+	},
+
+	async setCurrentWallet(userId: number, walletId: number) {
+		await delay(100);
+		const w = wallets.find(w => w.userId === userId && w.id === walletId);
+		if (!w) return { success: false, message: 'Ví không tồn tại' };
+		currentWalletByUser[userId] = walletId;
+		return { success: true };
 	},
 
 	async getTransactions(userId: number, walletId?: number) {
@@ -289,6 +290,22 @@ export const fakeApi = {
 		if (data.name) user.name = data.name;
 		if (data.email) user.email = data.email;
 		return { success: true, user: { id: user.id, email: user.email, name: user.name } };
+	},
+
+	async updatePassword(userId: number, oldPassword: string, newPassword: string) {
+		await delay(300);
+		const user = users.find(u => u.id === userId);
+		if (!user) {
+			return { success: false, message: 'Người dùng không tồn tại' };
+		}
+		if (user.password !== oldPassword) {
+			return { success: false, message: 'Mật khẩu hiện tại không đúng' };
+		}
+		if (!newPassword || newPassword.length < 6) {
+			return { success: false, message: 'Mật khẩu mới phải từ 6 ký tự' };
+		}
+		user.password = newPassword;
+		return { success: true, message: 'Đổi mật khẩu thành công' };
 	},
 
 	// Quick transaction parsing
@@ -460,6 +477,16 @@ export const fakeApi = {
 		if (data.color !== undefined) wallet.color = data.color;
 		
 		return { success: true, wallet };
+	},
+
+	async setDefaultWallet(userId: number, walletId: number) {
+		await delay(200);
+		const wallet = wallets.find(w => w.id === walletId && w.userId === userId);
+		if (!wallet) return { success: false, message: 'Ví không tồn tại' };
+		wallets.filter(w => w.userId === userId).forEach(w => { w.is_default = w.id === walletId ? 1 : 0; });
+		// also move current wallet to this
+		currentWalletByUser[userId] = walletId;
+		return { success: true };
 	},
 
 	// Category operations

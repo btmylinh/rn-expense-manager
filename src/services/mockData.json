@@ -1,0 +1,36 @@
+{
+  "users": [
+    { "id": 1, "email": "user@example.com", "password": "123456", "verified": true, "name": "Người dùng" }
+  ],
+  "user_settings": [
+    { "user_id": 1, "currency": "VND" }
+  ],
+  "wallets": [
+    { "id": 1, "user_id": 1, "name": "Ví chính", "amount": 1500000, "currency": "VND", "color": "#3B82F6", "is_default": 1 },
+    { "id": 2, "user_id": 1, "name": "Ví tiết kiệm", "amount": 500000, "currency": "VND", "color": "#10B981", "is_default": 0 }
+  ],
+  "categories": [
+    { "id": 1, "name": "Lương", "type": 1, "icon": "briefcase-outline", "color": "#10B981" },
+    { "id": 2, "name": "Thưởng", "type": 1, "icon": "gift-outline", "color": "#F97316" },
+    { "id": 3, "name": "Lãi ngân hàng", "type": 1, "icon": "bank-outline", "color": "#059669" },
+    { "id": 4, "name": "Ăn uống", "type": 2, "icon": "silverware-fork-knife", "color": "#F59E0B" },
+    { "id": 5, "name": "Di chuyển", "type": 2, "icon": "car-outline", "color": "#06B6D4" },
+    { "id": 6, "name": "Mua sắm", "type": 2, "icon": "shopping-outline", "color": "#EC4899" }
+  ],
+  "user_categories": [
+    { "id": 1, "user_id": 1, "name": "Ăn uống", "type": 2, "icon": "silverware-fork-knife", "color": "#F59E0B" },
+    { "id": 2, "user_id": 1, "name": "Giải trí", "type": 2, "icon": "gamepad-variant-outline", "color": "#8B5CF6" },
+    { "id": 3, "user_id": 1, "name": "Di chuyển", "type": 2, "icon": "car-outline", "color": "#06B6D4" },
+    { "id": 4, "user_id": 1, "name": "Lương", "type": 1, "icon": "briefcase-outline", "color": "#10B981" }
+  ],
+  "transactions": [
+    { "id": 1, "user_id": 1, "wallet_id": 1, "user_category_id": 4, "amount": -50000, "transaction_date": "2025-10-01", "content": "Ăn trưa", "type": 2 },
+    { "id": 2, "user_id": 1, "wallet_id": 1, "user_category_id": 3, "amount": -20000, "transaction_date": "2025-10-01", "content": "Xăng xe", "type": 2 },
+    { "id": 3, "user_id": 1, "wallet_id": 1, "user_category_id": 4, "amount": -35000, "transaction_date": "2025-10-02", "content": "Cà phê", "type": 2 },
+    { "id": 4, "user_id": 1, "wallet_id": 1, "user_category_id": 4, "amount": -80000, "transaction_date": "2025-10-03", "content": "Ăn tối", "type": 2 },
+    { "id": 5, "user_id": 1, "wallet_id": 1, "user_category_id": 4, "amount": 1000000, "transaction_date": "2025-10-03", "content": "Lương tạm ứng", "type": 1 }
+  ],
+  "currentWalletByUser": { "1": 1 }
+}
+
+
