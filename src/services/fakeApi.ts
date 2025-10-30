@@ -8,7 +8,6 @@ let wallets: Array<{id: number, userId: number, name: string, amount: number, cu
 let currentWalletByUser: Record<number, number | undefined> = {};
 let categories: Array<{id: number, name: string, type: number, icon: string, color?: string}> = [];
 let userCategories: Array<{id: number, userId: number, name: string, type: number, icon: string, color?: string}> = [];
-let userSettings: Array<{userId: number, currency: string}> = [];
 let transactions: Array<{id: number, userId: number, walletId: number, userCategoryId: number, amount: number, transactionDate: string, content: string, type: number}> = [];
 let currentUserId: number | null = null;
 
@@ -18,9 +17,6 @@ try {
 	// eslint-disable-next-line @typescript-eslint/no-var-requires
 	const seed = require('./mockData.json');
 	users = seed.users || users;
-	if (seed.user_settings) {
-		userSettings = seed.user_settings.map((s: any) => ({ userId: s.user_id, currency: s.currency }));
-	}
 	if (seed.wallets) {
 		wallets = seed.wallets.map((w: any) => ({
 			id: w.id,
@@ -161,7 +157,7 @@ export const fakeApi = {
 		await delay(250);
 		return {
 			hasWallet: wallets.some(w => w.userId === userId),
-			hasCurrency: userSettings.some(s => s.userId === userId),
+			hasCurrency: wallets.some(w => w.userId === userId && !!w.currency),
 			hasCategories: userCategories.some(c => c.userId === userId),
 		};
 	},
@@ -183,17 +179,6 @@ export const fakeApi = {
 			currentWalletByUser[userId] = wallet.id;
 		}
 		return { success: true, wallet };
-	},
-
-	async setCurrency(userId: number, currency: string) {
-		await delay(200);
-		const existing = userSettings.find(s => s.userId === userId);
-		if (existing) {
-			existing.currency = currency;
-		} else {
-			userSettings.push({ userId, currency });
-		}
-		return { success: true };
 	},
 
 	async addCategory(userId: number, name: string, type: number, icon?: string) {

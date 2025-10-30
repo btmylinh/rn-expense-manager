@@ -166,10 +166,12 @@ export default function AddTransactionScreen() {
   }, {} as Record<string, Transaction[]>);
 
   const formatCurrency = (amount: number) => {
-    return amount.toLocaleString('vi-VN', {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }) + '₫';
+    const cur = selectedWallet?.currency || 'VND';
+    if (cur === 'USD') {
+      return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount);
+    }
+    // default VND
+    return amount.toLocaleString('vi-VN', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + '₫';
   };
 
   // Helper functions for input formatting

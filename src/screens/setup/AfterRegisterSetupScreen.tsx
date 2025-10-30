@@ -103,16 +103,14 @@ export default function AfterRegisterSetupScreen({ route, navigation }: any) {
 			try {
 				// 1) Create wallet
 				await fakeApi.createWallet(userId, (walletName || 'Ví').trim(), Number(walletAmount) || 0, currency);
-				// 2) Set currency (if you still want a global setting)
-				await fakeApi.setCurrency(userId, currency);
-				// 3) Add selected suggestion categories
+				// 2) Add selected suggestion categories
 				for (const id of selectedCategoryIds) {
 					const cat = suggestionItems.find(c => c.id === id);
 					if (cat) {
 						await fakeApi.addCategory(userId, cat.name, cat.type, cat.icon ?? undefined);
 					}
 				}
-				// 4) Add custom categories collected during setup
+				// 3) Add custom categories collected during setup
 				for (const idx of selectedCustomIdx) {
 					const c = customCats[idx];
 					if (c) {
