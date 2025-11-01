@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { View, Alert, ScrollView, Platform } from 'react-native';
+import { View, Alert, ScrollView, Platform, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
 import { Portal, Modal, Text, IconButton, List, Button, Chip, Menu, Divider, SegmentedButtons, Dialog, TextInput } from 'react-native-paper';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import CategoryCreateForm from './CategoryCreateForm';
 import { fakeApi } from '../services/fakeApi';
+import { useAppTheme, getIconColor } from '../theme';
 
 interface Props {
   userId: number;
@@ -12,6 +14,7 @@ interface Props {
 }
 
 export default function CategoryManagerSheet({ userId, visible, onDismiss, onChanged }: Props) {
+  const theme = useAppTheme();
   const [categories, setCategories] = useState<Array<{ id: number; userId: number; name: string; type: number; icon?: string; color?: string }>>([]);
   const [createVisible, setCreateVisible] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -42,36 +45,97 @@ export default function CategoryManagerSheet({ userId, visible, onDismiss, onCha
 
   const data = categories.filter(c => c.type === (filterType === 'income' ? 1 : 2));
 
+  const styles = StyleSheet.create({
+    bottomSheet: {
+      backgroundColor: '#FFF',
+      marginTop: 'auto',
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      height: '80%',
+    },
+    header: {
+      paddingHorizontal: 20,
+      paddingTop: 16,
+      paddingBottom: 8,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    title: {
+      fontSize: 20,
+      fontWeight: '700',
+      color: theme.colors.onSurface,
+    },
+    segmentedContainer: {
+      paddingHorizontal: 16,
+      paddingBottom: 8,
+    },
+    listContainer: {
+      flex: 1,
+      paddingHorizontal: 16,
+    },
+    categoryItem: {
+      paddingVertical: 12,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    categoryLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flex: 1,
+    },
+    catIconWrap: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: 12,
+    },
+    categoryName: {
+      fontSize: 16,
+      color: '#222',
+      fontWeight: '500',
+    },
+    addButtonWrap: {
+      padding: 16,
+      paddingTop: 8,
+    },
+  });
+
   return (
     <Portal>
-      <Modal visible={visible} onDismiss={onDismiss} contentContainerStyle={{ backgroundColor: 'white', marginTop: 'auto', borderTopLeftRadius: 16, borderTopRightRadius: 16, height: '80%' }}>
-        <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Text style={{ fontSize: 22, fontWeight: '800' }}>Quản lý danh mục</Text>
-            <IconButton icon="close" onPress={onDismiss} />
+      <Modal visible={visible} onDismiss={onDismiss} contentContainerStyle={styles.bottomSheet}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Quản lý danh mục</Text>
+          <IconButton icon="close" onPress={onDismiss} size={20} />
           </View>
+
+        <View style={styles.segmentedContainer}>
+          <SegmentedButtons
+            value={filterType}
+            onValueChange={(v: any) => setFilterType(v)}
+            buttons={[{ value: 'expense', label: 'Chi tiêu' }, { value: 'income', label: 'Thu nhập' }]}
+          />
         </View>
-        <Divider />
-        <ScrollView style={{ maxHeight: '70%' }} contentContainerStyle={{ paddingHorizontal: 12, paddingTop: 10, paddingBottom: 6, rowGap: 8 }}>
-          {data.map((c) => (
-            <List.Item
-              key={c.id}
-              title={() => (
-                <Chip
-                  compact
-                  mode="outlined"
-                  icon={c.icon || 'tag-outline'}
-                  style={{ borderColor: '#e5e7eb' }}
-                  textStyle={{ fontSize: 14, fontWeight: '600' }}
-                >
-                  {c.name}
-                </Chip>
-              )}
-              right={() => (
+
+        <FlatList
+          data={data}
+          keyExtractor={(c) => String(c.id)}
+          style={styles.listContainer}
+          renderItem={({ item: c }) => (
+            <View style={styles.categoryItem}>
+              <View style={styles.categoryLeft}>
+                <View style={[styles.catIconWrap, { backgroundColor: getIconColor(c.icon, theme) + '22' }]}>
+                  <MaterialCommunityIcons name={c.icon as any || 'tag-outline'} size={20} color={getIconColor(c.icon, theme)} />
+                </View>
+                <Text style={styles.categoryName}>{c.name}</Text>
+              </View>
                 <Menu
                   visible={menuId === c.id}
                   onDismiss={() => setMenuId(null)}
-                  anchor={<IconButton icon="dots-vertical" onPress={() => setMenuId(c.id)} />}
+                anchor={<IconButton icon="dots-vertical" onPress={() => setMenuId(c.id)} size={20} />}
                 >
                   <Menu.Item title="Sửa" onPress={() => { setMenuId(null); setRenameId(c.id); setRenameName(c.name); setRenameIcon(c.icon || 'tag-outline'); setEditVisible(true); }} />
                   <Menu.Item title="Xóa" onPress={() => {
@@ -86,20 +150,12 @@ export default function CategoryManagerSheet({ userId, visible, onDismiss, onCha
                     ]);
                   }} />
                 </Menu>
-              )}
-            />
-          ))}
-        </ScrollView>
+            </View>
+          )}
+        />
 
-        <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
-          <SegmentedButtons
-            value={filterType}
-            onValueChange={(v: any) => setFilterType(v)}
-            buttons={[{ value: 'expense', label: 'Chi tiêu' }, { value: 'income', label: 'Thu nhập' }]}
-          />
-        </View>
-        <View style={{ padding: 16 }}>
-          <Button mode="outlined" onPress={() => setCreateVisible(true)} style={{ borderRadius: 28 }} contentStyle={{ paddingVertical: 6 }}>
+        <View style={styles.addButtonWrap}>
+          <Button mode="outlined" onPress={() => setCreateVisible(true)} style={{ borderRadius: 24 }}>
             Thêm danh mục
           </Button>
         </View>

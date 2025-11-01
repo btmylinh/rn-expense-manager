@@ -9,6 +9,7 @@ let currentWalletByUser: Record<number, number | undefined> = {};
 let categories: Array<{id: number, name: string, type: number, icon: string, color?: string}> = [];
 let userCategories: Array<{id: number, userId: number, name: string, type: number, icon: string, color?: string}> = [];
 let transactions: Array<{id: number, userId: number, walletId: number, userCategoryId: number, amount: number, transactionDate: string, content: string, type: number}> = [];
+let budgets: Array<{id: number, userId: number, userCategoryId: number, walletId: number, amount: number, startDate: string, endDate: string, isRepeat?: number, createdAt?: string, updatedAt?: string}> = [];
 let currentUserId: number | null = null;
 
 // Initialize mock data deterministically from JSON (map snake_case -> camelCase)
@@ -43,6 +44,20 @@ try {
 			transactionDate: t.transaction_date,
 			content: t.content,
 			type: t.type,
+		}));
+	}
+	if (seed.budgets) {
+		budgets = seed.budgets.map((b: any) => ({
+			id: b.id,
+			userId: b.user_id,
+			userCategoryId: b.user_category_id,
+			walletId: b.wallet_id,
+			amount: b.amount,
+			startDate: b.start_date,
+			endDate: b.end_date,
+			isRepeat: b.is_repeat ?? 0,
+			createdAt: b.created_at,
+			updatedAt: b.updated_at
 		}));
 	}
 } catch {}
@@ -80,6 +95,76 @@ if (!categories || categories.length === 0) {
 
 // Helper to generate OTP
 const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
+
+// Period helpers for budget repeat
+function toLocalYMD(d: Date) {
+	const y = d.getFullYear();
+	const m = (d.getMonth() + 1).toString().padStart(2, '0');
+	const day = d.getDate().toString().padStart(2, '0');
+	return `${y}-${m}-${day}`;
+}
+function getQuarterStart(d: Date) {
+	const q = Math.floor(d.getMonth() / 3);
+	return new Date(d.getFullYear(), q * 3, 1);
+}
+function getQuarterEnd(d: Date) {
+	const q = Math.floor(d.getMonth() / 3);
+	return new Date(d.getFullYear(), q * 3 + 3, 0);
+}
+function getPeriodType(startDate: string, endDate: string): 'week'|'month'|'quarter'|'year'|'custom' {
+	const s = new Date(startDate);
+	const e = new Date(endDate);
+	// normalize to date-only
+	const sN = new Date(s.getFullYear(), s.getMonth(), s.getDate());
+	const eN = new Date(e.getFullYear(), e.getMonth(), e.getDate());
+	// week Mon-Sun
+	const day = sN.getDay();
+	const diffToMonday = (day + 6) % 7;
+	const monday = new Date(sN); monday.setDate(sN.getDate() - diffToMonday);
+	const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6);
+	if (sN.getTime() === monday.getTime() && eN.getTime() === sunday.getTime()) return 'week';
+	// month boundaries
+	const mStart = new Date(sN.getFullYear(), sN.getMonth(), 1);
+	const mEnd = new Date(sN.getFullYear(), sN.getMonth() + 1, 0);
+	if (sN.getTime() === mStart.getTime() && eN.getTime() === mEnd.getTime()) return 'month';
+	// quarter
+	const qStart = getQuarterStart(sN);
+	const qEnd = getQuarterEnd(sN);
+	if (sN.getTime() === qStart.getTime() && eN.getTime() === qEnd.getTime()) return 'quarter';
+	// year
+	const yStart = new Date(sN.getFullYear(), 0, 1);
+	const yEnd = new Date(sN.getFullYear(), 12, 0);
+	if (sN.getTime() === yStart.getTime() && eN.getTime() === yEnd.getTime()) return 'year';
+	return 'custom';
+}
+function nextPeriod(startDate: string, endDate: string): { start: string, end: string } | null {
+	const type = getPeriodType(startDate, endDate);
+	if (type === 'custom') return null;
+	const s = new Date(startDate);
+	const e = new Date(endDate);
+	if (type === 'week') {
+		const s2 = new Date(s); s2.setDate(s2.getDate() + 7);
+		const e2 = new Date(e); e2.setDate(e2.getDate() + 7);
+		return { start: toLocalYMD(s2), end: toLocalYMD(e2) };
+	}
+	if (type === 'month') {
+		const s2 = new Date(s.getFullYear(), s.getMonth() + 1, 1);
+		const e2 = new Date(s.getFullYear(), s.getMonth() + 2, 0);
+		return { start: toLocalYMD(s2), end: toLocalYMD(e2) };
+	}
+	if (type === 'quarter') {
+		const qStart = getQuarterStart(s);
+		const nextQStart = new Date(qStart.getFullYear(), qStart.getMonth() + 3, 1);
+		const nextQEnd = new Date(nextQStart.getFullYear(), nextQStart.getMonth() + 3, 0);
+		return { start: toLocalYMD(nextQStart), end: toLocalYMD(nextQEnd) };
+	}
+	if (type === 'year') {
+		const s2 = new Date(s.getFullYear() + 1, 0, 1);
+		const e2 = new Date(s.getFullYear() + 1, 12, 0);
+		return { start: toLocalYMD(s2), end: toLocalYMD(e2) };
+	}
+	return null;
+}
 
 export const fakeApi = {
 	// Auth
@@ -515,57 +600,438 @@ export const fakeApi = {
 		return { success: true, message: 'Xóa danh mục thành công' };
 	},
 
-	// Statistics and analytics
-	async getTransactionStats(userId: number, walletId?: number, startDate?: string, endDate?: string) {
-		await delay(300);
-		let filtered = transactions.filter(t => t.userId === userId);
+	// Budget operations
+	async getBudgets(userId: number, walletId?: number) {
+		await delay(200);
+		let filtered = budgets.filter(b => b.userId === userId);
+		if(walletId) filtered = filtered.filter(b=>b.walletId === walletId);
 		
-		if (walletId) {
-			filtered = filtered.filter(t => t.walletId === walletId);
-		}
+		// Tính toán số tiền đã chi cho mỗi ngân sách (chỉ đến ngày hiện tại)
+		const today = new Date();
+		today.setHours(23, 59, 59, 999); // End of today
 		
-		if (startDate && endDate) {
-			filtered = filtered.filter(t => {
-				const txDate = new Date(t.transactionDate);
-				const start = new Date(startDate);
-				const end = new Date(endDate);
-				return txDate >= start && txDate <= end;
+		const budgetsWithSpent = filtered.map(budget => {
+			const relatedTransactions = transactions.filter(t => {
+				const transactionDate = new Date(t.transactionDate);
+				const startDate = new Date(budget.startDate);
+				const endDate = new Date(budget.endDate);
+				
+				return (
+					t.userId === userId && 
+					t.userCategoryId === budget.userCategoryId &&
+					t.walletId === budget.walletId && // Thêm điều kiện wallet
+					t.type === 2 && // chỉ tính giao dịch chi tiêu
+					transactionDate >= startDate &&
+					transactionDate <= endDate &&
+					transactionDate <= today // Chỉ tính đến ngày hiện tại
+				);
 			});
-		}
-
-		const income = filtered.filter(t => t.type === 1).reduce((sum, t) => sum + t.amount, 0);
-		const expense = filtered.filter(t => t.type === 2).reduce((sum, t) => sum + t.amount, 0);
+			
+			const spent = relatedTransactions.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+			
+			// Tạo dữ liệu biểu đồ (cumulative spending by day)
+			const startDate = new Date(budget.startDate);
+			const endDate = new Date(budget.endDate);
+			const chartData = [];
+			
+			// Tạo map chi tiêu theo ngày
+			const dailySpending = new Map();
+			relatedTransactions.forEach(t => {
+				const dateKey = new Date(t.transactionDate).toDateString();
+				const amount = Math.abs(t.amount);
+				dailySpending.set(dateKey, (dailySpending.get(dateKey) || 0) + amount);
+			});
+			
+			// Tạo array các ngày từ startDate đến min(endDate, today)
+			const currentDate = new Date(startDate);
+			const maxDate = new Date(Math.min(endDate.getTime(), today.getTime()));
+			let cumulativeSpending = 0;
+			
+			while (currentDate <= maxDate) {
+				const dayString = currentDate.toDateString();
+				const dailyAmount = dailySpending.get(dayString) || 0;
+				cumulativeSpending += dailyAmount;
+				
+				chartData.push({
+					date: new Date(currentDate).toISOString().split('T')[0], // YYYY-MM-DD format
+					value: cumulativeSpending,
+					dailyAmount
+				});
+				
+				currentDate.setDate(currentDate.getDate() + 1);
+			}
+			
+			return {
+				...budget,
+				spent,
+				chartData
+			};
+		});
 		
-		// Group by category
-		const categoryStats = filtered.reduce((acc, t) => {
-			const category = userCategories.find(c => c.id === t.userCategoryId);
-			const categoryName = category ? category.name : 'Khác';
+		return budgetsWithSpent;
+	},
+	async getBudgetDetail(userId: number, budgetId: number) {
+		await delay(200);
+		const budget = budgets.find(b => b.userId === userId && b.id === budgetId);
+		if (!budget) return { success: false, message: 'Ngân sách không tồn tại' };
+		return { success: true, budget };
+	},
+	async getBudgetTransactions(userId: number, budgetId: number) {
+		await delay(300);
+		const budget = budgets.find(b => b.userId === userId && b.id === budgetId);
+		if (!budget) return { success: false, message: 'Ngân sách không tồn tại' };
+
+		const today = new Date();
+		today.setHours(23, 59, 59, 999);
+
+		// Lấy tất cả giao dịch liên quan đến ngân sách này
+		const relatedTransactions = transactions.filter(t => {
+			const transactionDate = new Date(t.transactionDate);
+			const startDate = new Date(budget.startDate);
+			const endDate = new Date(budget.endDate);
 			
-			if (!acc[categoryName]) {
-				acc[categoryName] = { income: 0, expense: 0, count: 0 };
+			return (
+				t.userId === userId && 
+				t.userCategoryId === budget.userCategoryId &&
+				t.walletId === budget.walletId &&
+				transactionDate >= startDate &&
+				transactionDate <= endDate
+			);
+		});
+
+		// Lấy thông tin category và wallet
+		const [allCategories, allWallets] = await Promise.all([
+			this.getUserCategories(userId),
+			this.getWallets(userId)
+		]);
+
+		// Map transactions với thông tin đầy đủ
+		const transactionsWithDetails = relatedTransactions.map(t => {
+			const category = allCategories.find((c: any) => c.id === t.userCategoryId);
+			const wallet = allWallets.find((w: any) => w.id === t.walletId);
+			
+			return {
+				id: t.id,
+				amount: t.amount,
+				type: t.type === 1 ? 'income' as const : 'expense' as const,
+				date: t.transactionDate,
+				content: t.content,
+				category: {
+					id: category?.id || 0,
+					name: category?.name || 'Unknown',
+					icon: category?.icon || 'help-circle',
+					type: category?.type === 1 ? 'income' as const : 'expense' as const,
+				},
+				wallet: {
+					id: wallet?.id || 0,
+					name: wallet?.name || 'Unknown',
+				}
+			};
+		});
+
+		// Nhóm theo ngày và tính tổng
+		const groupedByDate = new Map();
+		transactionsWithDetails.forEach(transaction => {
+			const dateKey = transaction.date;
+			if (!groupedByDate.has(dateKey)) {
+				groupedByDate.set(dateKey, []);
 			}
-			
-			if (t.type === 1) {
-				acc[categoryName].income += t.amount;
-			} else {
-				acc[categoryName].expense += t.amount;
-			}
-			acc[categoryName].count += 1;
-			
-			return acc;
-		}, {} as Record<string, { income: number, expense: number, count: number }>);
+			groupedByDate.get(dateKey).push(transaction);
+		});
+
+		// Tạo dữ liệu nhóm theo ngày với tổng
+		const transactionGroups = Array.from(groupedByDate.entries())
+			.map(([date, dayTransactions]) => {
+				const total = dayTransactions.reduce((sum: number, t: any) => {
+					return sum + (t.type === 'income' ? t.amount : -Math.abs(t.amount));
+				}, 0);
+
+				return {
+					date,
+					total,
+					transactions: dayTransactions.sort((a: any, b: any) => b.id - a.id) // Sort by newest first
+				};
+			})
+			.sort((a, b) => {
+				// Sắp xếp theo ngày từ mới nhất đến cũ nhất
+				const dateA = new Date(a.date);
+				const dateB = new Date(b.date);
+				return dateB.getTime() - dateA.getTime();
+			});
+
+		// Tính tổng kết
+		const income = transactionsWithDetails
+			.filter(t => t.type === 'income')
+			.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+		const expense = transactionsWithDetails
+			.filter(t => t.type === 'expense')
+			.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+		
+		const summary = {
+			count: transactionsWithDetails.length,
+			income,
+			expense,
+			total: income - expense
+		};
 
 		return {
 			success: true,
-			stats: {
-				totalIncome: income,
-				totalExpense: expense,
-				netAmount: income - expense,
-				transactionCount: filtered.length,
-				categoryStats
+			data: {
+				budget,
+				summary,
+				transactionGroups
 			}
 		};
 	},
+	async getWalletDashboard(userId: number, walletId: number) {
+		await delay(300);
+		
+		// Get wallet info
+		const wallet = wallets.find(w => w.id === walletId && w.userId === userId);
+		if (!wallet) return { success: false, message: 'Ví không tồn tại' };
+
+		// Get recent transactions (last 10)
+		const recentTransactions = transactions
+			.filter(t => t.userId === userId && t.walletId === walletId)
+			.sort((a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime())
+			.slice(0, 10);
+
+		// Get categories and map transactions
+		const allCategories = await this.getUserCategories(userId);
+		const transactionsWithDetails = recentTransactions.map(t => {
+			const category = allCategories.find((c: any) => c.id === t.userCategoryId);
+			return {
+				id: t.id,
+				amount: t.amount,
+				type: t.type === 1 ? 'income' as const : 'expense' as const,
+				date: t.transactionDate,
+				content: t.content,
+				category: {
+					id: category?.id || 0,
+					name: category?.name || 'Unknown',
+					icon: category?.icon || 'help-circle',
+					type: category?.type === 1 ? 'income' as const : 'expense' as const,
+				}
+			};
+		});
+
+		// Calculate quick stats for current month
+		const now = new Date();
+		const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+		const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+		const monthlyTransactions = transactions.filter(t => {
+			const transactionDate = new Date(t.transactionDate);
+			return (
+				t.userId === userId && 
+				t.walletId === walletId &&
+				transactionDate >= startOfMonth && 
+				transactionDate <= endOfMonth
+			);
+		});
+
+		const monthlyIncome = monthlyTransactions
+			.filter(t => t.type === 1)
+			.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+		
+		const monthlyExpense = monthlyTransactions
+			.filter(t => t.type === 2)
+			.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+
+		return {
+			success: true,
+			data: {
+				wallet: {
+					id: wallet.id,
+					name: wallet.name,
+					balance: wallet.amount,
+					currency: wallet.currency
+				},
+				recentTransactions: transactionsWithDetails,
+				monthlyStats: {
+					income: monthlyIncome,
+					expense: monthlyExpense,
+					net: monthlyIncome - monthlyExpense,
+					transactionCount: monthlyTransactions.length
+				}
+			}
+		};
+	},
+	async getTransactionStats(userId: number) {
+		await delay(200);
+		
+		// Get user streak
+		const streakData = await this.getUserStreak(userId);
+		
+		// Calculate weekly stats
+		const now = new Date();
+		const startOfWeek = new Date(now);
+		startOfWeek.setDate(now.getDate() - now.getDay()); // Start of week (Sunday)
+		
+		const weeklyTransactions = transactions.filter(t => {
+			const transactionDate = new Date(t.transactionDate);
+			return (
+				t.userId === userId && 
+				transactionDate >= startOfWeek && 
+				transactionDate <= now
+			);
+		});
+
+		const weeklyIncome = weeklyTransactions
+			.filter(t => t.type === 1)
+			.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+		
+		const weeklyExpense = weeklyTransactions
+			.filter(t => t.type === 2)
+			.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+
+		// Get top spending categories this month
+		const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+		const monthlyExpenseTransactions = transactions.filter(t => {
+			const transactionDate = new Date(t.transactionDate);
+			return (
+				t.userId === userId && 
+				t.type === 2 &&
+				transactionDate >= startOfMonth && 
+				transactionDate <= now
+			);
+		});
+
+		const categorySpending = new Map();
+		monthlyExpenseTransactions.forEach(t => {
+			const amount = Math.abs(t.amount);
+			categorySpending.set(t.userCategoryId, (categorySpending.get(t.userCategoryId) || 0) + amount);
+		});
+
+		const allCategories = await this.getUserCategories(userId);
+		const topCategories = Array.from(categorySpending.entries())
+			.sort(([,a], [,b]) => b - a)
+			.slice(0, 5)
+			.map(([categoryId, amount]) => {
+				const category = allCategories.find((c: any) => c.id === categoryId);
+				return {
+					category: {
+						id: category?.id || 0,
+						name: category?.name || 'Unknown',
+						icon: category?.icon || 'help-circle'
+					},
+					amount
+				};
+			});
+
+		return {
+			success: true,
+			data: {
+				streak: streakData,
+				weeklyStats: {
+					income: weeklyIncome,
+					expense: weeklyExpense,
+					net: weeklyIncome - weeklyExpense,
+					transactionCount: weeklyTransactions.length
+				},
+				topCategories
+			}
+		};
+	},
+	async getUserPreferences(userId: number) {
+		await delay(150);
+		
+		const [currentWallet, user] = await Promise.all([
+			this.getCurrentWalletId(userId),
+			this.getUser(userId)
+		]);
+
+		return {
+			success: true,
+			data: {
+				currentWalletId: (currentWallet as any)?.walletId,
+				user: user.success ? user.user : null,
+				settings: {
+					// Add any user preferences here
+					defaultTransactionType: 2, // expense
+					currency: 'VND'
+				}
+			}
+		};
+	},
+	async createBudget(userId: number, data: {userCategoryId: number, walletId: number, amount: number, startDate: string, endDate: string, isRepeat?: number}) {
+		await delay(400);
+		// Uniqueness guard: user+cat+wallet+range
+		const exists = budgets.some(b => b.userId===userId && b.userCategoryId===data.userCategoryId && b.walletId===data.walletId && b.startDate===data.startDate && b.endDate===data.endDate);
+		if (exists) return { success: false, message: 'Ngân sách đã tồn tại cho khoảng thời gian này' } as any;
+		const id = Math.max(0, ...budgets.map(b => b.id)) + 1;
+		const budget = { id, userId, userCategoryId: data.userCategoryId, walletId: data.walletId, amount: data.amount, startDate: data.startDate, endDate: data.endDate, isRepeat: data.isRepeat ?? 0, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+		budgets.push(budget);
+		return { success: true, budget };
+	},
+	async updateBudget(userId: number, budgetId: number, data: {userCategoryId?: number, walletId?: number, amount?: number, startDate?: string, endDate?: string, isRepeat?: number}) {
+		await delay(300);
+		const budget = budgets.find(b => b.id === budgetId && b.userId === userId);
+		if (!budget) return { success: false, message: 'Ngân sách không tồn tại' };
+		if (data.userCategoryId !== undefined) budget.userCategoryId = data.userCategoryId;
+		if (data.walletId !== undefined) budget.walletId = data.walletId;
+		if (data.amount !== undefined) budget.amount = data.amount;
+		if (data.startDate !== undefined) budget.startDate = data.startDate;
+		if (data.endDate !== undefined) budget.endDate = data.endDate;
+		if (data.isRepeat !== undefined) budget.isRepeat = data.isRepeat;
+		budget.updatedAt = new Date().toISOString();
+		return { success: true, budget };
+	},
+	async deleteBudget(userId: number, budgetId: number) {
+		await delay(250);
+		const idx = budgets.findIndex(b => b.id === budgetId && b.userId === userId);
+		if (idx === -1) return { success: false, message: 'Ngân sách không tồn tại' };
+		budgets.splice(idx, 1);
+		return { success: true };
+	},
+
+	// Budget repeat worker - to be scheduled daily (e.g., 00:10)
+	async runDailyBudgetWorker(nowOverride?: Date) {
+		await delay(10);
+		const now = nowOverride ? new Date(nowOverride) : new Date();
+		// normalize now to date-only
+		const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+		for (const b of [...budgets]) {
+			if (!b.isRepeat || b.isRepeat !== 1) continue;
+			const end = new Date(b.endDate);
+			const endDateOnly = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+			// Skip if today has not passed end_date
+			if (today.getTime() <= endDateOnly.getTime()) continue;
+			// Only repeat for fixed periods
+			const type = getPeriodType(b.startDate, b.endDate);
+			if (type === 'custom') continue;
+			const next = nextPeriod(b.startDate, b.endDate);
+			if (!next) continue;
+			// De-dup guard
+			const duplicate = budgets.some(x => x.userId===b.userId && x.userCategoryId===b.userCategoryId && x.walletId===b.walletId && x.startDate===next.start && x.endDate===next.end);
+			if (duplicate) {
+				// Still flip current to non-repeat to keep only one head
+				b.isRepeat = 0;
+				b.updatedAt = new Date().toISOString();
+				continue;
+			}
+			// Create next period budget
+			const id = Math.max(0, ...budgets.map(bb => bb.id)) + 1;
+			const newBudget = {
+				id,
+				userId: b.userId,
+				userCategoryId: b.userCategoryId,
+				walletId: b.walletId,
+				amount: b.amount,
+				startDate: next.start,
+				endDate: next.end,
+				isRepeat: 1,
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString(),
+			};
+			budgets.push(newBudget);
+			// Flip previous to non-repeat
+			b.isRepeat = 0;
+			b.updatedAt = new Date().toISOString();
+		}
+		return { success: true };
+	},
+
 
 	// User streak (consecutive days with at least one transaction)
 	async getUserStreak(userId: number) {

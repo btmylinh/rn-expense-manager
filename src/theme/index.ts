@@ -47,6 +47,15 @@ const elevation = {
 	sheet: 6,
 };
 
+// Common UI presets to reduce repeated StyleSheet definitions
+const ui = {
+	card: { borderRadius: radius.card, padding: 16, elevation: elevation.card } as const,
+	listItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 12, borderRadius: radius.card } as const,
+	appBar: { borderRadius: radius.card, paddingHorizontal: 12, paddingVertical: 8 } as const,
+	modalContainer: { margin: 16, padding: 18, borderRadius: 14 } as const,
+	chip: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, fontSize: 13 } as const,
+};
+
 export const lightTheme = {
 	...DefaultLight,
 	colors: {
@@ -65,6 +74,7 @@ export const lightTheme = {
 	radius,
 	elevation,
 	semantic: { colors, typography },
+	ui,
 } as const;
 
 export const darkTheme = {
@@ -84,10 +94,27 @@ export const darkTheme = {
 	radius,
 	elevation,
 	semantic: { colors, typography },
+	ui,
 } as const;
 
 export type AppTheme = typeof lightTheme;
 
 export function useAppTheme() {
 	return useTheme<AppTheme>();
+}
+
+// Map icon keywords to theme colors
+export function getIconColor(iconName: string | undefined, theme: AppTheme): string {
+	if (!iconName) return theme.colors.primary;
+	const name = iconName.toLowerCase();
+	if (name.includes('food') || name.includes('coffee') || name.includes('silverware') || name.includes('cup')) return theme.semantic.colors.warning;
+	if (name.includes('car') || name.includes('bus') || name.includes('train') || name.includes('airplane') || name.includes('gas')) return '#06B6D4';
+	if (name.includes('home') || name.includes('sofa') || name.includes('lightbulb') || name.includes('water')) return '#8B5CF6';
+	if (name.includes('shopping') || name.includes('cart') || name.includes('bag') || name.includes('shoe') || name.includes('tshirt') || name.includes('tag')) return '#EC4899';
+	if (name.includes('wallet') || name.includes('credit') || name.includes('bank') || name.includes('currency')) return theme.colors.primary;
+	if (name.includes('movie') || name.includes('gamepad') || name.includes('music') || name.includes('ticket') || name.includes('book')) return '#6366F1';
+	if (name.includes('heart') || name.includes('pill') || name.includes('hospital')) return theme.colors.error;
+	if (name.includes('gift') || name.includes('party')) return '#F59E0B';
+	if (name.includes('dog') || name.includes('cat') || name.includes('leaf')) return '#10B981';
+	return theme.colors.primary;
 }

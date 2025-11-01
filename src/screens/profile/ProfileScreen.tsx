@@ -92,7 +92,7 @@ export default function ProfileScreen({ navigation }: any) {
 
 
 	return (
-		<View style={{ flex: 1}}>
+		<View style={{ flex: 1, backgroundColor: theme.colors.background }}>
 			<AppBar title="Hồ sơ" />
 			<ScrollView contentContainerStyle={{ padding: theme.spacing(1) }}>
 				{/* Header: Avatar + Name + Edit */}
@@ -233,6 +233,10 @@ export default function ProfileScreen({ navigation }: any) {
 				userId={userId}
 				visible={categorySheetVisible}
 				onDismiss={() => setCategorySheetVisible(false)}
+				onChanged={() => {
+					// Categories will be reloaded by useFocusEffect in other screens
+					// when they regain focus
+				}}
 			/>
 
 		</View>

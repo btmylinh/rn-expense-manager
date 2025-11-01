@@ -26,9 +26,13 @@ import {
   TextInput as PaperTextInput,
 } from 'react-native-paper';
 import { useTheme } from 'react-native-paper';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { fakeApi } from '../../services/fakeApi';
 import { useFocusEffect } from '@react-navigation/native';
 import { DatePickerModal } from 'react-native-paper-dates';
+import CategorySelectModal from '../../components/CategorySelectModal';
+import TransactionModal from '../../components/TransactionModal';
+import { getIconColor, useAppTheme } from '../../theme';
 
 
 interface Transaction {
@@ -65,6 +69,7 @@ interface Category {
 
 export default function AddTransactionScreen() {
   const theme = useTheme();
+  const appTheme = useAppTheme();
   const [userName, setUserName] = useState<string>('');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [wallets, setWallets] = useState<Wallet[]>([]);
@@ -80,15 +85,8 @@ export default function AddTransactionScreen() {
   const [actionTx, setActionTx] = useState<Transaction | null>(null);
   const [showActionsSheet, setShowActionsSheet] = useState(false);
   const [showEditSheet, setShowEditSheet] = useState(false);
-  const [editAmount, setEditAmount] = useState('');
-  const [editDate, setEditDate] = useState('');
-  const [editNote, setEditNote] = useState('');
-  const [editCategoryId, setEditCategoryId] = useState<number | null>(null);
-  const [editType, setEditType] = useState<'income' | 'expense'>('expense');
-  const [showEditCategoryModal, setShowEditCategoryModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [userStreak, setUserStreak] = useState(0);
-  const [openEditDatePicker, setOpenEditDatePicker] = useState(false);
 
   const userId = 1;
 
@@ -96,38 +94,46 @@ export default function AddTransactionScreen() {
     let mounted = true;
     (async () => {
       try {
-        const [w, c, s, cw, u] = await Promise.all([
+        const [w, c, prefs, stats] = await Promise.all([
           fakeApi.getWallets(userId),
           fakeApi.getUserCategories(userId),
-          fakeApi.getUserStreak(userId),
-          fakeApi.getCurrentWalletId(userId),
-          fakeApi.getUser(userId),
+          fakeApi.getUserPreferences(userId),
+          fakeApi.getTransactionStats(userId),
         ]);
         if (!mounted) return;
+        
         setWallets(w as any);
-        const currentId = (cw as any)?.walletId;
+        setCategories(c as any);
+        
+        if (prefs.success) {
+          const currentId = prefs.data.currentWalletId;
         const defaultSelection = (w as any).find((x: any) => x.id === currentId) || (w as any)[0] || null;
         setSelectedWallet(defaultSelection);
-        setCategories(c as any);
-        if ((s as any)?.success) setUserStreak((s as any).streak || 0);
-        if ((u as any)?.success && (u as any)?.user) setUserName((u as any).user.name || 'Người dùng');
+          if (prefs.data.user) setUserName(prefs.data.user.name || 'Người dùng');
+        }
+        
+        if (stats.success && stats.data.streak) {
+          setUserStreak(stats.data.streak.streak || 0);
+        }
       } catch { }
     })();
     return () => { mounted = false; };
   }, []);
 
-  // Refresh wallets whenever returning to this screen
+  // Refresh wallets and categories whenever returning to this screen
   useFocusEffect(
     useCallback(() => {
       let active = true;
       (async () => {
         try {
-          const [w, cw] = await Promise.all([
+          const [w, cw, c] = await Promise.all([
             fakeApi.getWallets(userId),
             fakeApi.getCurrentWalletId(userId),
+            fakeApi.getUserCategories(userId),
           ]);
           if (!active) return;
           setWallets(w as any);
+          setCategories(c as any);
           const currentId = (cw as any)?.walletId;
           const selected = (w as any).find((x: any) => x.id === currentId) || (w as any)[0] || null;
           setSelectedWallet(selected);
@@ -137,20 +143,32 @@ export default function AddTransactionScreen() {
     }, [])
   );
 
-  // Load transactions when selected wallet changes
+  // Load wallet dashboard when selected wallet changes
   useEffect(() => {
     if (!selectedWallet) return;
-    
+
     let mounted = true;
     (async () => {
       try {
-        const t = await fakeApi.getTransactions(userId, selectedWallet.id);
+        const dashboard = await fakeApi.getWalletDashboard(userId, selectedWallet.id);
         if (!mounted) return;
-        setTransactions((t as any).map((tx: any) => ({ ...tx, note: tx.content })));
+        
+        if (dashboard.success && dashboard.data) {
+          // Update wallet info with current balance
+          setSelectedWallet(prev => prev ? { ...prev, amount: dashboard.data.wallet.balance } : null);
+          // Set recent transactions (map to expected format)
+          setTransactions(dashboard.data.recentTransactions.map((tx: any) => ({ 
+            ...tx, 
+            note: tx.content,
+            userCategoryId: tx.category.id,
+            walletId: selectedWallet.id,
+            transactionDate: tx.date
+          })));
+        }
       } catch { }
     })();
     return () => { mounted = false; };
-  }, [selectedWallet]);
+  }, [selectedWallet?.id]); // Only depend on wallet ID to avoid infinite loops
 
   // Calculate current balance
   const currentBalance = selectedWallet?.amount ?? 0;
@@ -179,7 +197,7 @@ export default function AddTransactionScreen() {
     // Remove all non-numeric characters
     const numericValue = text.replace(/[^0-9]/g, '');
     if (!numericValue) return '';
-    
+
     // Convert to number and format
     const number = parseInt(numericValue, 10);
     return number.toLocaleString('vi-VN');
@@ -241,21 +259,21 @@ export default function AddTransactionScreen() {
                 userId: userId,
                 walletId: selectedWallet.id,
               }));
-              
+
               // Add new transactions to the list
               setTransactions(prev => [...newTransactions, ...prev]);
-              
+
               // Calculate total amount change
               const totalAmountChange = newTransactions.reduce((sum: number, tx: any) => sum + tx.amount, 0);
               const newBalance = selectedWallet.amount + totalAmountChange;
               const updatedWallet = { ...selectedWallet, amount: newBalance };
-              
+
               setSelectedWallet(updatedWallet);
-              setWallets(prev => prev.map(w => 
+              setWallets(prev => prev.map(w =>
                 w.id === selectedWallet.id ? updatedWallet : w
               ));
             }
-            
+
             Alert.alert('Thành công', `Đã thêm ${createResult.transactions.length} giao dịch`);
             setQuickInput('');
           }
@@ -291,70 +309,60 @@ export default function AddTransactionScreen() {
 
   const openEdit = () => {
     if (!actionTx) return;
-    setEditAmount(formatNumberInput(String(Math.abs(actionTx.amount))));
-    setEditDate(actionTx.transactionDate);
-    setEditNote((actionTx.note || '').slice(0, 250));
-    setEditCategoryId(actionTx.userCategoryId);
-    setEditType(actionTx.type === 1 ? 'income' : 'expense');
     setShowActionsSheet(false);
     setShowEditSheet(true);
   };
 
-  const saveEdit = useCallback(async () => {
+  const handleSaveEdit = useCallback(async (data: {
+    amount: number;
+    transactionDate: string;
+    content: string;
+    userCategoryId: number;
+    type: number;
+  }) => {
     if (!actionTx || !selectedWallet) return;
-    const amt = parseFormattedNumber(editAmount);
-    
-    if (amt <= 0) {
-      Alert.alert('Lỗi', 'Số tiền phải lớn hơn 0');
-      return;
-    }
-    
     setIsLoading(true);
-    
+
     try {
-      const result = await fakeApi.updateTransaction(userId, actionTx.id, {
-        amount: editType === 'income' ? Math.abs(amt) : -Math.abs(amt),
-        transactionDate: editDate,
-        content: (editNote || '').slice(0, 250),
-        userCategoryId: editCategoryId ?? actionTx.userCategoryId,
-        type: editType === 'income' ? 1 : 2,
-      });
-      
+      const result = await fakeApi.updateTransaction(userId, actionTx.id, data);
+
       if (result.success) {
         // Optimize: Update local state immediately instead of refetching
         const updatedTransaction = {
           ...actionTx,
-          amount: editType === 'income' ? Math.abs(amt) : -Math.abs(amt),
-          transactionDate: editDate,
-          content: (editNote || '').slice(0, 250),
-          note: (editNote || '').slice(0, 250),
-          userCategoryId: editCategoryId ?? actionTx.userCategoryId,
-          type: editType === 'income' ? 1 : 2,
+          amount: data.amount,
+          transactionDate: data.transactionDate,
+          content: data.content,
+          note: data.content,
+          userCategoryId: data.userCategoryId,
+          type: data.type,
         };
-        
+
         // Update transactions list locally
-        setTransactions(prev => prev.map(tx => 
+        setTransactions(prev => prev.map(tx =>
           tx.id === actionTx.id ? updatedTransaction : tx
         ));
-        
+
         // Calculate new wallet balance locally
         const amountDiff = updatedTransaction.amount - actionTx.amount;
         const newBalance = selectedWallet.amount + amountDiff;
         const updatedWallet = { ...selectedWallet, amount: newBalance };
-        
+
         setSelectedWallet(updatedWallet);
-        setWallets(prev => prev.map(w => 
+        setWallets(prev => prev.map(w =>
           w.id === selectedWallet.id ? updatedWallet : w
         ));
-        
+
         setShowEditSheet(false);
+        setActionTx(null);
       }
     } catch (error) {
       Alert.alert('Lỗi', 'Có lỗi xảy ra khi cập nhật giao dịch');
+      throw error;
     } finally {
       setIsLoading(false);
     }
-  }, [actionTx, selectedWallet, editAmount, editDate, editNote, editCategoryId, editType]);
+  }, [actionTx, selectedWallet]);
 
   const confirmDelete = () => {
     setShowActionsSheet(false);
@@ -363,27 +371,27 @@ export default function AddTransactionScreen() {
       { text: 'Hủy', style: 'cancel' },
       {
         text: 'Xoá', style: 'destructive', onPress: async () => {
-        try {
-          const result = await fakeApi.deleteTransaction(userId, actionTx.id);
-          if (result.success) {
-            // Optimize: Update local state immediately instead of refetching
-            // Remove transaction from list
-            setTransactions(prev => prev.filter(tx => tx.id !== actionTx.id));
-            
-            // Update wallet balance locally (add back the amount)
-            const newBalance = selectedWallet.amount - actionTx.amount;
-            const updatedWallet = { ...selectedWallet, amount: newBalance };
-            
-            setSelectedWallet(updatedWallet);
-            setWallets(prev => prev.map(w => 
-              w.id === selectedWallet.id ? updatedWallet : w
-            ));
-            
-            setActionTx(null);
+          try {
+            const result = await fakeApi.deleteTransaction(userId, actionTx.id);
+            if (result.success) {
+              // Optimize: Update local state immediately instead of refetching
+              // Remove transaction from list
+              setTransactions(prev => prev.filter(tx => tx.id !== actionTx.id));
+
+              // Update wallet balance locally (add back the amount)
+              const newBalance = selectedWallet.amount - actionTx.amount;
+              const updatedWallet = { ...selectedWallet, amount: newBalance };
+
+              setSelectedWallet(updatedWallet);
+              setWallets(prev => prev.map(w =>
+                w.id === selectedWallet.id ? updatedWallet : w
+              ));
+
+              setActionTx(null);
+            }
+          } catch (error) {
+            Alert.alert('Lỗi', 'Có lỗi xảy ra khi xóa giao dịch');
           }
-        } catch (error) {
-          Alert.alert('Lỗi', 'Có lỗi xảy ra khi xóa giao dịch');
-        }
         }
       }
     ]);
@@ -392,24 +400,24 @@ export default function AddTransactionScreen() {
   return (
     <View style={styles.container}>
       <View style={{ flex: 1 }}>
-      {/* App Bar */}
-      <View style={[styles.appBar, { backgroundColor: theme.colors.surface, paddingTop: 0 }]}>
-        <TouchableOpacity
-          style={styles.walletSelector}
-          onPress={() => setShowWalletModal(true)}
-        >
-          <Text style={[styles.walletTitle, { color: theme.colors.onSurface }]}>
-            {selectedWallet?.name || 'Chọn ví'}
-          </Text>
-          <IconButton
-            icon="chevron-down"
-            size={20}
-            iconColor={theme.colors.onSurface}
-          />
-        </TouchableOpacity>
-      </View>
-       {/* Current Balance Section */}
-       <Card style={styles.balanceCard}>
+        {/* App Bar */}
+        <View style={[styles.appBar, { backgroundColor: theme.colors.surface, paddingTop: 0 }]}>
+          <TouchableOpacity
+            style={styles.walletSelector}
+            onPress={() => setShowWalletModal(true)}
+          >
+            <Text style={[styles.walletTitle, { color: theme.colors.onSurface }]}>
+              {selectedWallet?.name}
+            </Text>
+            <IconButton
+              icon="chevron-down"
+              size={20}
+              iconColor={theme.colors.onSurface}
+            />
+          </TouchableOpacity>
+        </View>
+        {/* Current Balance Section */}
+        <Card style={styles.balanceCard}>
           <Card.Content style={styles.balanceContent}>
             <View style={styles.balanceLeft}>
               <Text style={styles.balanceLabel}>Số dư hiện tại:</Text>
@@ -419,7 +427,7 @@ export default function AddTransactionScreen() {
               ]}>
                 {balanceVisible ? formatCurrency(currentBalance) : '••••••'}
               </Text>
-          <Text style={{ fontSize: 14, color: '#F97316', fontWeight: '600', marginTop: 4 }}>🔥 Streak: {userStreak} ngày</Text>
+              <Text style={{ fontSize: 14, color: '#F97316', fontWeight: '600', marginTop: 4 }}>🔥 Streak: {userStreak} ngày</Text>
             </View>
             <View style={styles.balanceRight}>
               <IconButton
@@ -428,7 +436,7 @@ export default function AddTransactionScreen() {
                 iconColor={theme.colors.onSurface}
                 onPress={() => setBalanceVisible(!balanceVisible)}
               />
-           
+
             </View>
           </Card.Content>
         </Card>
@@ -436,82 +444,87 @@ export default function AddTransactionScreen() {
 
         {/* Transaction List */}
         <ScrollView>
-        <View style={styles.transactionList}>
-          {Object.entries(groupedTransactions).map(([date, transactions]) => (
-            <View key={date}>
-              {/* Date Separator */}
-              <View style={styles.dateSeparator}>
-                <Text style={styles.dateText}>{date}</Text>
+          <View style={styles.transactionList}>
+            {Object.entries(groupedTransactions).map(([date, transactions]) => (
+              <View key={date}>
+                {/* Date Separator */}
+                <View style={styles.dateSeparator}>
+                  <Text style={styles.dateText}>{date}</Text>
+                </View>
+
+                {/* Transactions for this date */}
+                {transactions.map((transaction) => {
+                  const category = getCategoryInfo(transaction.userCategoryId);
+                  const isIncome = transaction.type === 1;
+
+                  return (
+                    <View key={transaction.id} style={styles.transactionItem}>
+
+                      <Card style={styles.transactionCard}>
+                        <Card.Content style={styles.transactionContent}>
+                          <View style={styles.transactionLeft}>
+                            <IconButton
+                              icon="dots-vertical"
+                              size={18}
+                              iconColor="#6B7280"
+                              onPress={() => openActions(transaction)}
+                            />
+                            <Text style={styles.transactionNote}>{transaction.note || transaction.content || ''}</Text>
+                          </View>
+
+                          <View style={styles.transactionRight}>
+                            <View style={styles.categoryDisplay}>
+                              <View style={[styles.categoryIconSmall, { backgroundColor: getIconColor(category.icon, appTheme) + '22' }]}>
+                                <MaterialCommunityIcons 
+                                  name={category.icon as any || 'tag-outline'} 
+                                  size={14} 
+                                  color={getIconColor(category.icon, appTheme)} 
+                                />
+                              </View>
+                              <Text style={[styles.categoryNameText, { color: getIconColor(category.icon, appTheme) }]}>
+                              {category.name}
+                              </Text>
+                            </View>
+
+                            <Text style={[
+                              styles.transactionAmount,
+                              { color: isIncome ? '#22C55E' : '#EF4444' }
+                            ]}>
+                              {isIncome ? '+' : '-'}{formatCurrency(Math.abs(transaction.amount))}
+                            </Text>
+                          </View>
+                        </Card.Content>
+                      </Card>
+                      <Avatar.Text
+                        size={40}
+                        label={initials}
+                        style={[styles.avatar, { backgroundColor: theme.colors.primary }]}
+                        color={theme.colors.onPrimary}
+                      />
+
+                    </View>
+
+                  );
+                })}
               </View>
-              
-              {/* Transactions for this date */}
-              {transactions.map((transaction) => {
-                const category = getCategoryInfo(transaction.userCategoryId);
-                const isIncome = transaction.type === 1;
-                
-                return (
-                  <View key={transaction.id} style={styles.transactionItem}>
-                    
-                    <Card style={styles.transactionCard}>
-                      <Card.Content style={styles.transactionContent}>
-                        <View style={styles.transactionLeft}>
-                          <IconButton
-                            icon="dots-vertical"
-                            size={18}
-                            iconColor="#6B7280"
-                            onPress={() => openActions(transaction)}
-                          />
-                          <Text style={styles.transactionNote}>{transaction.note || transaction.content || ''}</Text>
-                        </View>
-                        
-                        <View style={styles.transactionRight}>
-                        <Chip
-                            mode="outlined"
-                            style={[styles.categoryChip, { borderColor: category.color || '#64748B' }]}
-                            textStyle={[styles.categoryText, { color: category.color || '#64748B' }]}
-                          >
-                            {category.name}
-                          </Chip>
-                          
-                          <Text style={[
-                            styles.transactionAmount,
-                            { color: isIncome ? '#22C55E' : '#EF4444' }
-                          ]}>
-                            {isIncome ? '+' : '-'}{formatCurrency(Math.abs(transaction.amount))}
-                          </Text>
-                        </View>
-                      </Card.Content>
-                    </Card>
-                    <Avatar.Text
-                      size={40}
-                      label={initials}
-                      style={[styles.avatar, { backgroundColor: theme.colors.primary }]}
-                      color={theme.colors.onPrimary}
-                    />
-                    
-                  </View>
-                  
-                );
-              })}
-            </View>
-          ))}
-        </View>
-      </ScrollView>
-      {/* Quick Input Bar */}
+            ))}
+          </View>
+        </ScrollView>
+        {/* Quick Input Bar */}
 
         {/* Thanh nhập nhanh luôn nổi ở đáy */}
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-        style= {{
-          flex: 1,
-          position: 'absolute',
-          bottom: 0,
-          left: 0,
-          right: 0,
-        }}
-      >
-      <View style={[styles.quickInputBar, { backgroundColor: theme.colors.surface }]}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+          style={{
+            flex: 1,
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            right: 0,
+          }}
+        >
+          <View style={[styles.quickInputBar, { backgroundColor: theme.colors.surface }]}>
 
             {quickFocused ? (
               <IconButton
@@ -523,196 +536,110 @@ export default function AddTransactionScreen() {
               />
             ) : (
               <>
-        <IconButton
-          icon="plus-circle"
+                <IconButton
+                  icon="plus-circle"
                   size={18}
-          iconColor="#22C55E"
-          style={styles.quickInputIcon}
-          onPress={handleAddTransaction}
-        />
-        <IconButton
-          icon="camera"
+                  iconColor="#22C55E"
+                  style={styles.quickInputIcon}
+                  onPress={handleAddTransaction}
+                />
+                <IconButton
+                  icon="camera"
                   size={18}
-          iconColor="#64748B"
-          style={styles.quickInputIcon}
-          onPress={handleOCR}
-        />
-        <IconButton
-          icon="microphone"
+                  iconColor="#64748B"
+                  style={styles.quickInputIcon}
+                  onPress={handleOCR}
+                />
+                <IconButton
+                  icon="microphone"
                   size={18}
-          iconColor="#64748B"
-          style={styles.quickInputIcon}
-          onPress={handleVoice}
-        />
+                  iconColor="#64748B"
+                  style={styles.quickInputIcon}
+                  onPress={handleVoice}
+                />
               </>
             )}
-        
-        <TextInput
+
+            <TextInput
               ref={quickInputRef}
               style={[styles.quickInputField, quickFocused && { marginRight: 8 }]}
-          placeholder="Nhập 'đi chơi 90k, cà phê 15k'"
-          placeholderTextColor="#9CA3AF"
-          value={quickInput}
-          onChangeText={setQuickInput}
-          multiline
+              placeholder="Nhập 'đi chơi 90k, cà phê 15k'"
+              placeholderTextColor="#9CA3AF"
+              value={quickInput}
+              onChangeText={setQuickInput}
+              multiline
               onFocus={() => setQuickFocused(true)}
               onBlur={() => setQuickFocused(false)}
               textAlignVertical="top"
-        />
-        
-        <IconButton
-          icon="send"
+            />
+
+            <IconButton
+              icon="send"
               size={18}
-          iconColor="#22C55E"
-          onPress={handleQuickInput}
-        />
-      </View>
+              iconColor="#22C55E"
+              onPress={handleQuickInput}
+            />
+          </View>
         </KeyboardAvoidingView>
 
-      {/* Wallet Selection Modal */}
-      <Portal>
-        <Modal
-          visible={showWalletModal}
-          onDismiss={() => setShowWalletModal(false)}
-          contentContainerStyle={styles.modalContent}
-        >
-          <Text style={styles.modalTitle}>Chọn ví</Text>
-          <ScrollView>
-            {(wallets).map((wallet) => (
-              <List.Item
-                key={wallet.id}
-                title={wallet.name}
-                description={`${formatCurrency(wallet.amount)} ${wallet.currency}`}
-                onPress={() => handleWalletSelect(wallet)}
-                style={styles.listItem}
-              />
-            ))}
-          </ScrollView>
-        </Modal>
-      </Portal>
+        {/* Wallet Selection Modal */}
+        <Portal>
+          <Modal
+            visible={showWalletModal}
+            onDismiss={() => setShowWalletModal(false)}
+            contentContainerStyle={styles.modalContent}
+          >
+            <Text style={styles.modalTitle}>Chọn ví</Text>
+            <ScrollView>
+              {(wallets).map((wallet) => (
+                <List.Item
+                  left={props => <List.Icon {...props} icon="wallet-outline" color={theme.colors.primary} />}
+                  right={props => selectedWallet?.id === wallet.id ? <List.Icon {...props} icon="check" color={theme.colors.primary} /> : null}
+                  key={wallet.id}
+                  title={wallet.name}
+                  description={`${formatCurrency(wallet.amount)} ${wallet.currency}`}
+                  onPress={() => handleWalletSelect(wallet)}
+                  style={styles.listItem}
+                />
+              ))}
+            </ScrollView>
+          </Modal>
+        </Portal>
 
-      {/* Actions Bottom Sheet */}
-      <Portal>
-        <Modal
-          visible={showActionsSheet}
-          onDismiss={() => setShowActionsSheet(false)}
-          contentContainerStyle={[styles.sheetContainer]}
-        >
-          <Text style={styles.sheetTitle}>Thao tác</Text>
-          <List.Item
-            title="Chỉnh sửa"
-            left={props => <List.Icon {...props} icon="pencil" />}
-            onPress={openEdit}
-          />
-          <List.Item
-            title="Xoá"
-            left={props => <List.Icon {...props} icon="delete" />}
-            onPress={confirmDelete}
-          />
-        </Modal>
-      </Portal>
+        {/* Actions Bottom Sheet */}
+        <Portal>
+          <Modal
+            visible={showActionsSheet}
+            onDismiss={() => setShowActionsSheet(false)}
+            contentContainerStyle={[styles.sheetContainer]}
+          >
+            <Text style={styles.sheetTitle}>Thao tác</Text>
+            <List.Item
+              title="Chỉnh sửa"
+              left={props => <List.Icon {...props} icon="pencil" />}
+              onPress={openEdit}
+            />
+            <List.Item
+              title="Xoá"
+              left={props => <List.Icon {...props} icon="delete" />}
+              onPress={confirmDelete}
+            />
+          </Modal>
+        </Portal>
 
-      {/* Edit Bottom Sheet */}
-      <Portal>
-        <Modal
+        {/* Edit Transaction Modal */}
+        <TransactionModal
           visible={showEditSheet}
-          onDismiss={() => setShowEditSheet(false)}
-          contentContainerStyle={[styles.sheetContainer]}
-        >
-            <KeyboardAwareScrollView enableOnAndroid extraScrollHeight={Platform.OS === 'ios' ? 16 : 32} keyboardShouldPersistTaps="handled">
-          <Text style={styles.editTitle}>Chỉnh sửa giao dịch</Text>
-          <SegmentedButtons
-            value={editType}
-            onValueChange={(v: any) => setEditType(v)}
-            buttons={[
-              { value: 'expense', label: 'Chi', icon: 'minus' },
-              { value: 'income', label: 'Thu', icon: 'plus' },
-            ]}
-            style={{ marginBottom: 12 }}
-          />
-          <View style={styles.fieldRow}>
-            <Text style={styles.fieldLabel}>Số tiền</Text>
-            <TextInput
-              value={editAmount}
-              onChangeText={(text) => setEditAmount(formatNumberInput(text))}
-              keyboardType="numeric"
-              style={styles.fieldInput}
-              placeholder="Nhập số tiền (VD: 1,000)"
-            />
-          </View>
-          <View style={styles.fieldRow}>
-            <Text style={styles.fieldLabel}>Ngày</Text>
-            <PaperTextInput
-              value={editDate}
-              onPressIn={() => setOpenEditDatePicker(true)}
-              right={<PaperTextInput.Icon icon="calendar" onPress={() => setOpenEditDatePicker(true)} />}
-              editable={false}
-              dense={true}
-              placeholder="YYYY-MM-DD"
-              style={{...styles.fieldInput, height: 36}}
-            />
-                <DatePickerModal
-                locale="vi"
-                mode="single"
-                visible={openEditDatePicker}
-                date={parseDate(editDate)}
-                onDismiss={() => setOpenEditDatePicker(false)}
-                onConfirm={({ date }) => {
-                  if (date) setEditDate(formatDate(date));
-                  setOpenEditDatePicker(false);
-                }}
-            />
-          </View>
-          <View style={styles.fieldRow}>
-            <Text style={styles.fieldLabel}>Nội dung giao dịch</Text>
-            <TextInput
-              value={editNote}
-              multiline
-              numberOfLines={4}
-              textAlignVertical="top"
-              onChangeText={(t) => setEditNote((t || '').slice(0, 250))}
-              style={[styles.fieldInput, { minHeight: 96 }]}
-              placeholder="Nhập ghi chú"
-            />
-            <Text style={{ textAlign: 'right', color: '#6B7280', marginTop: 4 }}>{editNote.length}/250</Text>
-          </View>
-          <View style={styles.fieldRow}>
-            <Text style={styles.fieldLabel}>Danh mục</Text>
-            <Button mode="outlined" onPress={() => setShowEditCategoryModal(true)}>
-              {(() => {
-                const cat = categories.find(c => c.id === editCategoryId);
-                return cat ? cat.name : 'Chọn danh mục';
-              })()}
-            </Button>
-          </View>
-          <View style={styles.sheetActions}>
-            <Button mode="outlined" onPress={() => setShowEditSheet(false)} disabled={isLoading}>Huỷ</Button>
-            <Button mode="contained" onPress={saveEdit} loading={isLoading} disabled={isLoading}>
-              {isLoading ? 'Đang lưu...' : 'Lưu'}
-            </Button>
-          </View>
-            </KeyboardAwareScrollView>
-        </Modal>
-      </Portal>
-
-        {/* Sao chép: đã loại bỏ theo yêu cầu */}
-
-      {/* Edit Category Select */}
-      <Portal>
-        <Modal visible={showEditCategoryModal} onDismiss={() => setShowEditCategoryModal(false)} contentContainerStyle={styles.modalContent}>
-          <Text style={styles.modalTitle}>Chọn danh mục</Text>
-          <ScrollView>
-            {(categories.filter(c => (editType === 'income' ? c.type === 1 : c.type === 2))).map(cat => (
-              <List.Item
-                key={cat.id}
-                title={cat.name}
-                onPress={() => { setEditCategoryId(cat.id); setShowEditCategoryModal(false); }}
-                left={props => <List.Icon {...props} icon="folder" color={cat.color} />}
-              />
-            ))}
-          </ScrollView>
-        </Modal>
-      </Portal>
+          mode="edit"
+          transaction={actionTx}
+          categories={categories}
+          onDismiss={() => {
+            setShowEditSheet(false);
+            setActionTx(null);
+          }}
+          onSave={handleSaveEdit}
+          loading={isLoading}
+        />
 
         {/* Sao chép: đã loại bỏ theo yêu cầu */}
 
@@ -856,11 +783,20 @@ const styles = StyleSheet.create({
   transactionLeft: {
     flex: 1,
   },
-  categoryChip: {
-    alignSelf: 'flex-start',
+  categoryDisplay: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: 4,
   },
-  categoryText: {
+  categoryIconSmall: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 6,
+  },
+  categoryNameText: {
     fontSize: 12,
     fontWeight: '600',
   },
@@ -949,6 +885,41 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6B7280',
     marginBottom: 6,
+    fontWeight: '500',
+  },
+  categorySelectBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    minHeight: 48,
+  },
+  categoryContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  categoryIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  categorySelectedText: {
+    fontSize: 15,
+    color: '#111827',
+    fontWeight: '600',
+  },
+  categoryPlaceholder: {
+    fontSize: 15,
+    color: '#9CA3AF',
   },
   fieldInput: {
     backgroundColor: '#F3F4F6',

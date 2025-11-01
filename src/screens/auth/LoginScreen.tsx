@@ -73,7 +73,6 @@ export default function LoginScreen({ navigation }: any) {
 					{/* Header / Logo */}
 					<View style={{ alignItems: 'center', marginBottom: theme.spacing(3) }}>
 						<Text style={[theme.semantic.typography.h2, { color: theme.colors.primary }]}>Money Manager</Text>
-						<Text style={[theme.semantic.typography.small, { color: theme.colors.onSurfaceVariant, marginTop: 4 }]}>Kết nối – Hoạt động – Ghi nhận thành tích</Text>
 					</View>
 					{/* Form */}
 					<TextInput
