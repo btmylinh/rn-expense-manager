@@ -245,21 +245,21 @@ export default function BudgetsScreen() {
 
   return (
 		<View style={[styles.container, { backgroundColor: theme.colors.background, padding: theme.spacing(3) }]}>
-			{/* App Bar with wallet selector (replace title) */}
-			<View style={[theme.ui.appBar, styles.appBar, { backgroundColor: theme.colors.surface, paddingTop: 0 }]}> 
-				<TouchableOpacity style={styles.walletSelector} onPress={() => setWalletSheetVisible(true)}>
-					<Text style={[styles.walletTitle, { color: theme.colors.onSurface }]}>{walletName}</Text>
-					<IconButton icon="chevron-down" size={20} iconColor={theme.colors.onSurface} />
-				
-				{/* History Icon */}
-				<IconButton 
-					icon="history" 
-					size={20} 
-					iconColor={theme.colors.onSurface}
-					onPress={() => navigation.navigate('BudgetHistory')}
-				/>
-				</TouchableOpacity>
-			</View>
+		{/* App Bar with wallet selector (replace title) */}
+		<View style={[theme.ui.appBar, styles.appBar, { backgroundColor: theme.colors.surface, paddingTop: 0 }]}> 
+			<TouchableOpacity style={styles.walletSelector} onPress={() => setWalletSheetVisible(true)}>
+				<Text style={[styles.walletTitle, { color: theme.colors.onSurface }]}>{walletName}</Text>
+				<IconButton icon="chevron-down" size={20} iconColor={theme.colors.onSurface} />
+			</TouchableOpacity>
+			
+			{/* History Icon */}
+			<IconButton 
+				icon="history" 
+				size={24} 
+				iconColor={theme.colors.onSurface}
+				onPress={() => navigation.navigate('BudgetHistory')}
+			/>
+		</View>
 
 			<ScrollView
 				horizontal
@@ -354,8 +354,8 @@ export default function BudgetsScreen() {
 
 const styles = StyleSheet.create({
 	container: { flex: 1 },
-	appBar: { borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 8 },
-	walletSelector: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+	appBar: { borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+	walletSelector: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', flex: 1 },
     walletTitle: { fontSize: 18 },
 	tabsWrap: { flexGrow: 0, marginVertical: 12 },
 	tabsContent: { gap: 9 },

@@ -9,7 +9,10 @@ export default function DashboardScreen() {
 		<View style={{ flex: 1, padding: theme.spacing(3) }}>
 			<Text style={[theme.semantic.typography.h2, { color: theme.colors.onSurface }]}>Tổng quan</Text>
 			<View style={{ height: theme.spacing(3) }} />
-			<Text style={[theme.semantic.typography.body, { color: theme.colors.onSurfaceVariant }]}>Sắp có charts và thẻ thống kê…</Text>
+			<Text style={[theme.semantic.typography.body, { color: theme.colors.onSurfaceVariant }]}>Biểu đồ cột so sánh tổng chi tiêu tuần/tháng này với tuần/tháng trước</Text>
+			<Text style={[theme.semantic.typography.body, { color: theme.colors.onSurfaceVariant }]}>Biểu đồ tròn thống kê tổng chi tiêu theo danh mục</Text>
+			<Text style={[theme.semantic.typography.body, { color: theme.colors.onSurfaceVariant }]}>top 3 danh mục chi tiêu nhiều nhất</Text>
+			<Text style={[theme.semantic.typography.body, { color: theme.colors.onSurfaceVariant }]}>top 3 giao dịch gần đây</Text>
 		</View>
 	);
 }

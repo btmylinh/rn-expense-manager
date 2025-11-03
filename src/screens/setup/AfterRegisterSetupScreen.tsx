@@ -118,7 +118,7 @@ export default function AfterRegisterSetupScreen({ route, navigation }: any) {
 					}
 				}
 				setSnack('Thiết lập thành công!');
-				setTimeout(() => navigation.replace('Tabs'), 700);
+				setTimeout(() => navigation.replace('Tabs', { initialTab: 'Thêm' }), 700);
 			} catch (error) {
 				setSnack('Thiết lập thất bại, vui lòng thử lại');
 			}

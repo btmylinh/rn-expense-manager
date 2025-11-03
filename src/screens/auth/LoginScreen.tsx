@@ -41,7 +41,7 @@ export default function LoginScreen({ navigation }: any) {
 				if (needsSetup) {
 					navigation.replace('Setup', { email: result.user.email, userId: result.user.id });
 				} else {
-					navigation.replace('Tabs');
+					navigation.replace('Tabs', { initialTab: 'Thêm' });
 				}
 			} else {
 				setFormError('Thông tin người dùng không hợp lệ');

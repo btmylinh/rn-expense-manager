@@ -12,7 +12,7 @@ import TransactionListScreen from '../screens/transactions/TransactionListScreen
 
 export type RootStackParamList = {
 	Auth: undefined;
-	Tabs: undefined;
+	Tabs: { initialTab?: string } | undefined;
 	BudgetCreate: {
 		categories: any[];
 		budget: any;

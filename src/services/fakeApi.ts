@@ -304,7 +304,7 @@ export const fakeApi = {
 		return filtered.sort((a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime());
 	},
 
-	async addTransaction(userId: number, walletId: number, userCategoryId: number, amount: number, content: string, type: number) {
+	async addTransaction(userId: number, walletId: number, userCategoryId: number, amount: number, content: string, type: number, transactionDate?: string) {
 		await delay(400);
 		const transaction = { 
 			id: transactions.length + 1, 
@@ -312,7 +312,7 @@ export const fakeApi = {
 			walletId, 
 			userCategoryId, 
 			amount, 
-			transactionDate: new Date().toISOString().split('T')[0], 
+			transactionDate: transactionDate || new Date().toISOString().split('T')[0], 
 			content, 
 			type 
 		};
@@ -439,6 +439,243 @@ export const fakeApi = {
 		return { success: true, transactions: createdTransactions };
 	},
 
+	// Parse text to transactions using AI (simulating OpenAI API call)
+	async parseTextToTransactions(userId: number, text: string) {
+		// Simulate API call delay (2-3 seconds)
+		await delay(2000 + Math.random() * 1000);
+		
+		// Get user categories for matching
+		const userCats = userCategories.filter(c => c.userId === userId);
+		const defaultCategory = userCats.find(c => c.name.toLowerCase().includes('ăn uống')) || userCats[0] || { id: 1, name: 'Ăn uống', type: 2 };
+		
+		// Parse text to extract transactions (simulating AI parsing)
+		const detectedTransactions = [];
+		
+		// Example patterns: "cơm 30k", "cá 50k", "31/10/2025 cơm 30k", etc.
+		const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+		
+		for (const line of lines) {
+			// Extract date (if present)
+			const dateMatch = line.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+			let transactionDate = new Date().toISOString().split('T')[0]; // Default to today
+			if (dateMatch) {
+				const [, day, month, year] = dateMatch;
+				transactionDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+			}
+			
+			// Extract amount (look for numbers followed by k, K, đ, or no suffix)
+			const amountMatch = line.match(/(\d+(?:[.,]\d+)?)\s*(?:k|K|đ|₫|d)?/i);
+			if (!amountMatch) continue;
+			
+			let amount = parseFloat(amountMatch[1].replace(',', '.'));
+			if (line.toLowerCase().includes('k')) {
+				amount *= 1000;
+			}
+			amount = Math.round(amount);
+			
+			// Extract description (remove date and amount)
+			let description = line
+				.replace(/\d{1,2}\/\d{1,2}\/\d{4}/g, '')
+				.replace(/(\d+(?:[.,]\d+)?)\s*(?:k|K|đ|₫|d)?/gi, '')
+				.trim();
+			
+			if (!description) {
+				// Try to extract from common patterns
+				const descMatch = line.match(/([a-zA-ZÀ-ỹ\s]+)/);
+				if (descMatch) {
+					description = descMatch[1].trim();
+				}
+			}
+			
+			if (!description || amount <= 0) continue;
+			
+			// Match category based on keywords
+			let categoryId = defaultCategory.id;
+			const descLower = description.toLowerCase();
+			
+			if (descLower.includes('ăn') || descLower.includes('cơm') || descLower.includes('cá') || descLower.includes('uống') || descLower.includes('cà phê')) {
+				const foodCat = userCats.find(c => c.name.toLowerCase().includes('ăn uống'));
+				if (foodCat) categoryId = foodCat.id;
+			} else if (descLower.includes('chơi') || descLower.includes('giải trí') || descLower.includes('xem phim')) {
+				const entCat = userCats.find(c => c.name.toLowerCase().includes('giải trí'));
+				if (entCat) categoryId = entCat.id;
+			} else if (descLower.includes('xe') || descLower.includes('xăng') || descLower.includes('di chuyển')) {
+				const transCat = userCats.find(c => c.name.toLowerCase().includes('di chuyển'));
+				if (transCat) categoryId = transCat.id;
+			}
+			
+			detectedTransactions.push({
+				id: `parsed_${Date.now()}_${detectedTransactions.length}_${Math.random()}`, // Unique temporary ID
+				description,
+				amount: -Math.abs(amount), // Negative for expense
+				categoryId,
+				type: 2, // Expense
+				date: transactionDate,
+				// Full category info for display
+				category: userCats.find(c => c.id === categoryId) || defaultCategory
+			});
+		}
+		
+		// If no transactions detected, create default ones from common patterns
+		if (detectedTransactions.length === 0) {
+			const commonPatterns = [
+				{ desc: 'cơm', amount: 30000 },
+				{ desc: 'cá', amount: 50000 }
+			];
+			
+			commonPatterns.forEach(({ desc, amount }, index) => {
+				detectedTransactions.push({
+					id: `temp_${Date.now()}_${index}_${Math.random()}`,
+					description: desc,
+					amount: -amount,
+					categoryId: defaultCategory.id,
+					type: 2,
+					date: new Date().toISOString().split('T')[0],
+					category: defaultCategory
+				});
+			});
+		}
+		
+		return {
+			success: true,
+			transactions: detectedTransactions,
+			count: detectedTransactions.length
+		};
+	},
+
+	// Parse voice audio to transactions using AI (simulating speech-to-text + AI parsing)
+	async parseVoiceToTransactions(userId: number, audioFile?: any) {
+		// Simulate API call delay (3-5 seconds as specified)
+		await delay(3000 + Math.random() * 2000);
+		
+		// Get user categories for matching
+		const userCats = userCategories.filter(c => c.userId === userId);
+		const defaultCategory = userCats.find(c => c.name.toLowerCase().includes('ăn uống')) || userCats[0] || { id: 1, name: 'Ăn uống', type: 2 };
+		
+		// Simulate voice recognition results - common voice patterns
+		const voiceTranscript = "Mua cà phê 35 nghìn, ăn sáng 45 nghìn, nạp điện thoại 100 nghìn";
+		
+		// Parse the transcript
+		const detectedTransactions = [];
+		const parts = voiceTranscript.match(/([\w\sÀ-ỹ]+)\s+(\d+)\s+nghìn/g) || [];
+		
+		for (const part of parts) {
+			const match = part.match(/([\w\sÀ-ỹ]+)\s+(\d+)\s+nghìn/);
+			if (!match) continue;
+			
+			const [, description, amountStr] = match;
+			const amount = parseInt(amountStr, 10) * 1000; // Convert thousands to actual amount
+			
+			if (!description || amount <= 0) continue;
+			
+			// Match category based on keywords
+			let categoryId = defaultCategory.id;
+			const descLower = description.toLowerCase();
+			
+			if (descLower.includes('ăn') || descLower.includes('cà phê') || descLower.includes('uống')) {
+				const foodCat = userCats.find(c => c.name.toLowerCase().includes('ăn uống'));
+				if (foodCat) categoryId = foodCat.id;
+			} else if (descLower.includes('nạp') || descLower.includes('điện thoại')) {
+				const utilityCat = userCats.find(c => c.name.toLowerCase().includes('tiện ích'));
+				if (utilityCat) categoryId = utilityCat.id;
+			} else if (descLower.includes('chơi') || descLower.includes('giải trí') || descLower.includes('xem phim')) {
+				const entCat = userCats.find(c => c.name.toLowerCase().includes('giải trí'));
+				if (entCat) categoryId = entCat.id;
+			} else if (descLower.includes('xe') || descLower.includes('xăng') || descLower.includes('di chuyển')) {
+				const transCat = userCats.find(c => c.name.toLowerCase().includes('di chuyển'));
+				if (transCat) categoryId = transCat.id;
+			}
+			
+			detectedTransactions.push({
+				id: `voice_${Date.now()}_${detectedTransactions.length}_${Math.random()}`,
+				description: description.trim(),
+				amount: -Math.abs(amount), // Negative for expense
+				categoryId,
+				type: 2, // Expense
+				date: new Date().toISOString().split('T')[0],
+				category: userCats.find(c => c.id === categoryId) || defaultCategory
+			});
+		}
+		
+		// If no transactions detected from voice, create default examples
+		if (detectedTransactions.length === 0) {
+			const commonVoiceExamples = [
+				{ desc: 'Cà phê', amount: 35000, cat: 'ăn uống' },
+				{ desc: 'Ăn sáng', amount: 45000, cat: 'ăn uống' },
+				{ desc: 'Nạp điện thoại', amount: 100000, cat: 'tiện ích' }
+			];
+			
+			commonVoiceExamples.forEach(({ desc, amount, cat }, index) => {
+				const matchedCat = userCats.find(c => c.name.toLowerCase().includes(cat)) || defaultCategory;
+				detectedTransactions.push({
+					id: `voice_${Date.now()}_${index}_${Math.random()}`,
+					description: desc,
+					amount: -amount,
+					categoryId: matchedCat.id,
+					type: 2,
+					date: new Date().toISOString().split('T')[0],
+					category: matchedCat
+				});
+			});
+		}
+		
+		return {
+			success: true,
+			transactions: detectedTransactions,
+			count: detectedTransactions.length
+		};
+	},
+
+	// Parse image (OCR) to transactions using AI (simulating OCR + AI parsing)
+	async parseImageToTransactions(userId: number, imageUri: string | null) {
+		// Simulate API call delay (3-5 seconds as specified)
+		await delay(3000 + Math.random() * 2000);
+		
+		// Get user categories for matching
+		const userCats = userCategories.filter(c => c.userId === userId);
+		const defaultCategory = userCats.find(c => c.name.toLowerCase().includes('ăn uống')) || userCats[0] || { id: 1, name: 'Ăn uống', type: 2 };
+		
+		// Simulate OCR results from receipt/invoice - typical receipt patterns
+		const detectedTransactions: Array<{
+			id: string | number;
+			description: string;
+			amount: number;
+			categoryId: number;
+			type: number;
+			date: string;
+			category: any;
+		}> = [];
+		
+		// Common OCR detected examples from receipts
+		const ocrExamples = [
+			{ desc: 'Cà phê Highlands', amount: 55000, cat: 'ăn uống' },
+			{ desc: 'Ăn trưa', amount: 75000, cat: 'ăn uống' },
+			{ desc: 'Grab', amount: 32000, cat: 'di chuyển' }
+		];
+		
+		ocrExamples.forEach(({ desc, amount, cat }, index) => {
+			let categoryId = defaultCategory.id;
+			const matchedCat = userCats.find(c => c.name.toLowerCase().includes(cat));
+			if (matchedCat) categoryId = matchedCat.id;
+			
+			detectedTransactions.push({
+				id: `ocr_${Date.now()}_${index}_${Math.random()}`,
+				description: desc,
+				amount: -Math.abs(amount), // Negative for expense
+				categoryId,
+				type: 2, // Expense
+				date: new Date().toISOString().split('T')[0],
+				category: userCats.find(c => c.id === categoryId) || defaultCategory
+			});
+		});
+		
+		return {
+			success: true,
+			transactions: detectedTransactions,
+			count: detectedTransactions.length
+		};
+	},
+
 	// Enhanced transaction operations for AddTransactionScreen
 	async updateTransaction(userId: number, transactionId: number, data: {
 		amount?: number,
@@ -557,6 +794,33 @@ export const fakeApi = {
 		// also move current wallet to this
 		currentWalletByUser[userId] = walletId;
 		return { success: true };
+	},
+
+	async deleteWallet(userId: number, walletId: number) {
+		await delay(300);
+		const walletIndex = wallets.findIndex(w => w.id === walletId && w.userId === userId);
+		if (walletIndex === -1) {
+			return { success: false, message: 'Ví không tồn tại' };
+		}
+
+		const wallet = wallets[walletIndex];
+		
+		// Check if it's the default wallet - if so, set another wallet as default
+		if (wallet.is_default === 1 || wallet.is_default === true) {
+			const otherWallets = wallets.filter(w => w.userId === userId && w.id !== walletId);
+			if (otherWallets.length > 0) {
+				otherWallets[0].is_default = 1;
+				currentWalletByUser[userId] = otherWallets[0].id;
+			} else {
+				// If this is the only wallet, clear current wallet
+				delete currentWalletByUser[userId];
+			}
+		}
+
+		// Remove wallet
+		wallets.splice(walletIndex, 1);
+		
+		return { success: true, message: 'Xóa ví thành công' };
 	},
 
 	// Category operations
@@ -803,9 +1067,14 @@ export const fakeApi = {
 			return {
 				id: t.id,
 				amount: t.amount,
-				type: t.type === 1 ? 'income' as const : 'expense' as const,
+				type: t.type, // Keep as number (1 or 2) for compatibility
+				typeLabel: t.type === 1 ? 'income' as const : 'expense' as const, // For display
 				date: t.transactionDate,
 				content: t.content,
+				note: t.content, // Alias for content
+				userCategoryId: t.userCategoryId,
+				walletId: t.walletId,
+				transactionDate: t.transactionDate, // Keep original format
 				category: {
 					id: category?.id || 0,
 					name: category?.name || 'Unknown',
@@ -814,6 +1083,29 @@ export const fakeApi = {
 				}
 			};
 		});
+
+		// Group transactions by date (API calculates)
+		const groupedByDate = new Map<string, typeof transactionsWithDetails>();
+		transactionsWithDetails.forEach(transaction => {
+			const dateKey = new Date(transaction.date).toLocaleDateString('vi-VN');
+			if (!groupedByDate.has(dateKey)) {
+				groupedByDate.set(dateKey, []);
+			}
+			groupedByDate.get(dateKey)!.push(transaction);
+		});
+
+		// Convert to array format for easy consumption
+		const transactionGroups = Array.from(groupedByDate.entries())
+			.map(([date, dayTransactions]) => ({
+				date,
+				transactions: dayTransactions.sort((a, b) => b.id - a.id) // Sort by newest first
+			}))
+			.sort((a, b) => {
+				// Sort groups by date from newest to oldest
+				const dateA = new Date(a.transactions[0].date);
+				const dateB = new Date(b.transactions[0].date);
+				return dateB.getTime() - dateA.getTime();
+			});
 
 		// Calculate quick stats for current month
 		const now = new Date();
@@ -847,7 +1139,8 @@ export const fakeApi = {
 					balance: wallet.amount,
 					currency: wallet.currency
 				},
-				recentTransactions: transactionsWithDetails,
+				recentTransactions: transactionsWithDetails, // Keep for backward compatibility
+				transactionGroups: transactionGroups, // Grouped by date (API calculates)
 				monthlyStats: {
 					income: monthlyIncome,
 					expense: monthlyExpense,

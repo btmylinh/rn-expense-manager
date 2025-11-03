@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, Dimensions, ActivityIndicator } from 'react-native';
 import { Button, ProgressBar, Divider } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LineChart } from 'react-native-gifted-charts';
@@ -311,11 +311,31 @@ export default function BudgetDetailScreen({ navigation, route }: Props) {
 
   if (loading || !budget) {
     return (
-      <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-        <Text>Đang tải...</Text>
+      <View
+        style={[
+          styles.container,
+          {
+            flex: 1,
+            justifyContent: 'center',
+            alignItems: 'center',
+            backgroundColor: theme.colors.background,
+          },
+        ]}
+      >
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+        <Text
+          style={{
+            marginTop: 12,
+            fontSize: 16,
+            color: theme.colors.onSurfaceVariant || '#666',
+          }}
+        >
+          Đang tải dữ liệu, vui lòng chờ...
+        </Text>
       </View>
     );
   }
+  
 
   const progress = Math.min(budget.spent / budget.amount, 1);
   const remaining = budget.amount - budget.spent;

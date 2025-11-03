@@ -361,7 +361,6 @@ const styles = StyleSheet.create({
   categorySelectedText: {
     fontSize: 15,
     color: '#111827',
-    fontWeight: '600',
   },
   categoryPlaceholder: {
     fontSize: 15,

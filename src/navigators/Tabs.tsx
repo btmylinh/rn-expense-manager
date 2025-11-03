@@ -13,20 +13,23 @@ import TransactionsScreen from '../screens/transactions/TransactionsScreen';
 
 const Tab = createBottomTabNavigator();
 
-export default function Tabs() {
+export default function Tabs({ route }: any) {
 	const theme = useAppTheme();
 	const insets = useSafeAreaInsets();
+	const initialTab = route?.params?.initialTab || 'Tổng quan';
+	
 	return (
 		<Tab.Navigator
+			initialRouteName={initialTab}
 			screenOptions={({ route }) => ({
 				headerShown: false,
 				tabBarHideOnKeyboard: true,
 				tabBarIcon: ({ color, size }) => {
 					let name: any = 'home';
 					if (route.name === 'Tổng quan') name = 'view-dashboard-outline';
-					else if (route.name === 'Ngân sách') name = 'wallet';
+					else if (route.name === 'Ngân sách') name = 'cash-multiple';
 					else if (route.name === 'Thêm') name = 'plus-circle';
-					else if (route.name === 'Sổ giao dịch') name = 'format-list-bulleted';
+					else if (route.name === 'Sổ giao dịch') name = 'book-account';
 					else if (route.name === 'Hồ sơ') name = 'account';
 					const iconColor = color;
 					const iconSize = size;
