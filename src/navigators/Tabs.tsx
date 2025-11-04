@@ -37,7 +37,7 @@ export default function Tabs({ route }: any) {
 				},
 				tabBarActiveTintColor: theme.colors.primary,
 				tabBarStyle: { height: Math.max(60, 56 + insets.bottom), paddingTop: 6, paddingBottom: Math.max(8, insets.bottom) },
-				tabBarLabelStyle: { fontSize: 12 },
+				tabBarLabelStyle: { fontSize: 10 },
 			})}
 		>
 			<Tab.Screen name="Tổng quan" component={DashboardScreen} />

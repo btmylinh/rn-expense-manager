@@ -245,21 +245,21 @@ export default function BudgetsScreen() {
 
   return (
 		<View style={[styles.container, { backgroundColor: theme.colors.background, padding: theme.spacing(3) }]}>
-		{/* App Bar with wallet selector (replace title) */}
-		<View style={[theme.ui.appBar, styles.appBar, { backgroundColor: theme.colors.surface, paddingTop: 0 }]}> 
-			<TouchableOpacity style={styles.walletSelector} onPress={() => setWalletSheetVisible(true)}>
-				<Text style={[styles.walletTitle, { color: theme.colors.onSurface }]}>{walletName}</Text>
-				<IconButton icon="chevron-down" size={20} iconColor={theme.colors.onSurface} />
+			{/* App Bar with wallet selector (replace title) */}
+			<View style={[theme.ui.appBar, styles.appBar, { backgroundColor: theme.colors.surface, paddingTop: 0 }]}> 
+				<TouchableOpacity style={styles.walletSelector} onPress={() => setWalletSheetVisible(true)}>
+					<Text style={[styles.walletTitle, { color: theme.colors.onSurface }]}>{walletName}</Text>
+					<IconButton icon="chevron-down" size={20} iconColor={theme.colors.onSurface} />
 			</TouchableOpacity>
-			
-			{/* History Icon */}
-			<IconButton 
-				icon="history" 
+				
+				{/* History Icon */}
+				<IconButton 
+					icon="history" 
 				size={24} 
-				iconColor={theme.colors.onSurface}
-				onPress={() => navigation.navigate('BudgetHistory')}
-			/>
-		</View>
+					iconColor={theme.colors.onSurface}
+					onPress={() => navigation.navigate('BudgetHistory')}
+				/>
+			</View>
 
 			<ScrollView
 				horizontal

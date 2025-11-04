@@ -8,7 +8,7 @@ let wallets: Array<{id: number, userId: number, name: string, amount: number, cu
 let currentWalletByUser: Record<number, number | undefined> = {};
 let categories: Array<{id: number, name: string, type: number, icon: string, color?: string}> = [];
 let userCategories: Array<{id: number, userId: number, name: string, type: number, icon: string, color?: string}> = [];
-let transactions: Array<{id: number, userId: number, walletId: number, userCategoryId: number, amount: number, transactionDate: string, content: string, type: number}> = [];
+let transactions: Array<{id: number, userId: number, walletId: number, userCategoryId: number, amount: number, transactionDate: string, content: string, type: number, note?: string}> = [];
 let budgets: Array<{id: number, userId: number, userCategoryId: number, walletId: number, amount: number, startDate: string, endDate: string, isRepeat?: number, createdAt?: string, updatedAt?: string}> = [];
 let currentUserId: number | null = null;
 
@@ -1054,11 +1054,11 @@ export const fakeApi = {
 		const wallet = wallets.find(w => w.id === walletId && w.userId === userId);
 		if (!wallet) return { success: false, message: 'Ví không tồn tại' };
 
-		// Get recent transactions (last 10)
+		// Get recent transactions (last 10) - sorted oldest to newest
 		const recentTransactions = transactions
 			.filter(t => t.userId === userId && t.walletId === walletId)
-			.sort((a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime())
-			.slice(0, 10);
+			.sort((a, b) => new Date(a.transactionDate).getTime() - new Date(b.transactionDate).getTime())
+			.slice(-10); // Take last 10 (most recent) but keep oldest→newest order
 
 		// Get categories and map transactions
 		const allCategories = await this.getUserCategories(userId);
@@ -1098,13 +1098,14 @@ export const fakeApi = {
 		const transactionGroups = Array.from(groupedByDate.entries())
 			.map(([date, dayTransactions]) => ({
 				date,
-				transactions: dayTransactions.sort((a, b) => b.id - a.id) // Sort by newest first
+				// Sort transactions within same day by ID (oldest first, assuming ID increments with time)
+				transactions: dayTransactions.sort((a, b) => a.id - b.id)
 			}))
 			.sort((a, b) => {
-				// Sort groups by date from newest to oldest
+				// Sort groups by date from oldest to newest
 				const dateA = new Date(a.transactions[0].date);
 				const dateB = new Date(b.transactions[0].date);
-				return dateB.getTime() - dateA.getTime();
+				return dateA.getTime() - dateB.getTime();
 			});
 
 		// Calculate quick stats for current month
@@ -1380,6 +1381,463 @@ export const fakeApi = {
 		} else {
 			return { success: true, data: userTransactions, format: 'json' };
 		}
+	},
+
+	// Dashboard APIs - Separate APIs for each data type
+	async getDashboardSummary(userId: number, timeRange: 'week' | 'month') {
+		await delay(500);
+		
+		const userTxs = transactions.filter(t => t.userId === userId);
+		const now = new Date();
+		let currentStart: Date, currentEnd: Date, previousStart: Date, previousEnd: Date;
+
+		if (timeRange === 'week') {
+			const dayOfWeek = now.getDay();
+			// Tính từ thứ 2 (Monday = 1) đến Chủ nhật (Sunday = 0)
+			const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Sunday = 6 days from Monday
+			currentStart = new Date(now);
+			currentStart.setDate(now.getDate() - daysFromMonday);
+			currentStart.setHours(0, 0, 0, 0);
+			currentEnd = new Date(now);
+
+			// Tuần trước: từ thứ 2 tuần trước đến chủ nhật tuần trước
+			previousEnd = new Date(currentStart);
+			previousEnd.setDate(previousEnd.getDate() - 1); // Chủ nhật tuần trước
+			previousStart = new Date(previousEnd);
+			previousStart.setDate(previousStart.getDate() - 6); // Thứ 2 tuần trước
+		} else {
+			currentStart = new Date(now.getFullYear(), now.getMonth(), 1);
+			currentEnd = new Date(now);
+
+			previousEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+			previousStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+		}
+
+		const currentPeriodTxs = userTxs.filter(t => {
+			const txDate = new Date(t.transactionDate);
+			return txDate >= currentStart && txDate <= currentEnd;
+		});
+
+		const previousPeriodTxs = userTxs.filter(t => {
+			const txDate = new Date(t.transactionDate);
+			return txDate >= previousStart && txDate <= previousEnd;
+		});
+
+		const currentIncome = currentPeriodTxs
+			.filter(t => t.type === 1)
+			.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+
+		const currentExpense = currentPeriodTxs
+			.filter(t => t.type === 2)
+			.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+
+		const previousIncome = previousPeriodTxs
+			.filter(t => t.type === 1)
+			.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+
+		const previousExpense = previousPeriodTxs
+			.filter(t => t.type === 2)
+			.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+
+		const incomeChange = previousIncome > 0 
+			? ((currentIncome - previousIncome) / previousIncome) * 100 
+			: 0;
+
+		const expenseChange = previousExpense > 0 
+			? ((currentExpense - previousExpense) / previousExpense) * 100 
+			: 0;
+
+		return {
+			success: true,
+			data: {
+				current: {
+					income: currentIncome,
+					expense: currentExpense,
+					net: currentIncome - currentExpense,
+				},
+				previous: {
+					income: previousIncome,
+					expense: previousExpense,
+					net: previousIncome - previousExpense,
+				},
+				changes: {
+					income: incomeChange,
+					expense: expenseChange,
+				},
+				period: {
+					current: timeRange === 'week' 
+						? `Tuần này (${currentStart.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })} - ${new Date(currentStart.getTime() + 6 * 24 * 60 * 60 * 1000).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })})`
+						: `Tháng ${now.getMonth() + 1}/${now.getFullYear()}`,
+					previous: timeRange === 'week' ? 'tuần trước' : 'tháng trước',
+				}
+			}
+		};
+	},
+
+	async getDashboardBarChartData(userId: number, timeRange: 'week' | 'month') {
+		await delay(300);
+		
+		const summary = await this.getDashboardSummary(userId, timeRange);
+		if (!summary.success) return { success: false, data: [] };
+
+		const { current, previous } = summary.data;
+
+		return {
+			success: true,
+			data: [
+				{
+					value: current.expense,
+					label: timeRange === 'week' ? 'Tuần này' : 'Tháng này',
+					color: '#EF4444', // error color
+					type: 'current'
+				},
+				{
+					value: previous.expense,
+					label: timeRange === 'week' ? 'Tuần trước' : 'Tháng trước',
+					color: '#6B7280', // onSurfaceVariant color
+					type: 'previous'
+				}
+			]
+		};
+	},
+
+	async getDashboardTopCategories(userId: number, timeRange: 'week' | 'month', limit: number = 3) {
+		await delay(400);
+		
+		const userTxs = transactions.filter(t => t.userId === userId);
+		const userCats = userCategories.filter(c => c.userId === userId);
+		const now = new Date();
+		let currentStart: Date, currentEnd: Date;
+
+		if (timeRange === 'week') {
+			const dayOfWeek = now.getDay();
+			// Tính từ thứ 2 (Monday = 1) đến Chủ nhật (Sunday = 0)
+			const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Sunday = 6 days from Monday
+			currentStart = new Date(now);
+			currentStart.setDate(now.getDate() - daysFromMonday);
+			currentStart.setHours(0, 0, 0, 0);
+			currentEnd = new Date(now);
+		} else {
+			currentStart = new Date(now.getFullYear(), now.getMonth(), 1);
+			currentEnd = new Date(now);
+		}
+
+		const currentPeriodTxs = userTxs.filter(t => {
+			const txDate = new Date(t.transactionDate);
+			return txDate >= currentStart && txDate <= currentEnd && t.type === 2; // Only expenses
+		});
+
+		const categorySpending = new Map<number, number>();
+		currentPeriodTxs.forEach(t => {
+			const amount = Math.abs(t.amount);
+			categorySpending.set(
+				t.userCategoryId,
+				(categorySpending.get(t.userCategoryId) || 0) + amount
+			);
+		});
+
+		const totalExpense = Array.from(categorySpending.values()).reduce((sum, amount) => sum + amount, 0);
+
+		const topCategories = Array.from(categorySpending.entries())
+			.sort(([, a], [, b]) => b - a)
+			.slice(0, limit)
+			.map(([categoryId, amount], index) => {
+				const category = userCats.find(c => c.id === categoryId);
+				const percentage = totalExpense > 0 ? (amount / totalExpense) * 100 : 0;
+				
+				return {
+					id: category?.id || 0,
+					name: category?.name || 'Unknown',
+					icon: category?.icon || 'help-circle',
+					amount: amount,
+					percentage: percentage,
+					rank: index + 1,
+				};
+			});
+
+		return {
+			success: true,
+			data: topCategories,
+			totalExpense: totalExpense
+		};
+	},
+
+	async getDashboardPieChartData(userId: number, timeRange: 'week' | 'month') {
+		await delay(350);
+		
+		const topCategories = await this.getDashboardTopCategories(userId, timeRange, 5);
+		if (!topCategories.success) return { success: false, data: [] };
+
+		const colors = ['#3B82F6', '#EF4444', '#22C55E', '#F59E0B', '#8B5CF6'];
+
+		const pieData = topCategories.data.map((cat, index) => ({
+			value: cat.percentage,
+			color: colors[index % colors.length],
+			gradientCenterColor: colors[index % colors.length] + '80',
+			focused: index === 0,
+			text: `${cat.percentage.toFixed(1)}%`,
+			category: {
+				id: cat.id,
+				name: cat.name,
+				icon: cat.icon,
+				amount: cat.amount,
+			}
+		}));
+
+		return {
+			success: true,
+			data: pieData,
+			totalAmount: topCategories.totalExpense,
+			centerLabel: {
+				amount: topCategories.totalExpense,
+				text: 'Tổng chi'
+			}
+		};
+	},
+
+	async getDashboardRecentTransactions(userId: number, limit: number = 3) {
+		await delay(300);
+		
+		const userTxs = transactions.filter(t => t.userId === userId);
+		const userCats = userCategories.filter(c => c.userId === userId);
+
+		const recentTxs = userTxs
+			.sort((a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime())
+			.slice(0, limit)
+			.map(tx => {
+				const category = userCats.find(c => c.id === tx.userCategoryId);
+				return {
+					id: tx.id,
+					title: tx.content || 'Giao dịch',
+					amount: tx.amount,
+					type: tx.type, // 1: income, 2: expense
+					date: tx.transactionDate,
+					category: {
+						id: category?.id || 0,
+						name: category?.name || 'Chưa phân loại',
+						icon: category?.icon || 'tag-outline',
+					},
+					formattedDate: new Date(tx.transactionDate).toLocaleDateString('vi-VN', { 
+						day: '2-digit', 
+						month: '2-digit', 
+						year: 'numeric' 
+					}),
+					isIncome: tx.type === 1,
+					displayAmount: Math.abs(tx.amount),
+				};
+			});
+
+		return {
+			success: true,
+			data: recentTxs
+		};
+	},
+
+	// Transaction List APIs
+	async getTransactionsList(userId: number, options: {
+		page?: number;
+		limit?: number;
+		search?: string;
+		categoryId?: number;
+		walletId?: number;
+		type?: number; // 1: income, 2: expense
+		dateFrom?: string;
+		dateTo?: string;
+		sortBy?: 'date' | 'amount' | 'category';
+		sortOrder?: 'asc' | 'desc';
+	} = {}) {
+		await delay(400);
+		
+		const {
+			page = 1,
+			limit = 20,
+			search = '',
+			categoryId,
+			walletId,
+			type,
+			dateFrom,
+			dateTo,
+			sortBy = 'date',
+			sortOrder = 'desc'
+		} = options;
+
+		let userTxs = transactions.filter(t => t.userId === userId);
+		const userCats = userCategories.filter(c => c.userId === userId);
+
+		// Apply filters
+		if (search) {
+			userTxs = userTxs.filter(t => 
+				(t.content || '').toLowerCase().includes(search.toLowerCase())
+			);
+		}
+
+		if (categoryId) {
+			userTxs = userTxs.filter(t => t.userCategoryId === categoryId);
+		}
+
+		if (walletId) {
+			userTxs = userTxs.filter(t => t.walletId === walletId);
+		}
+
+		if (type) {
+			userTxs = userTxs.filter(t => t.type === type);
+		}
+
+		if (dateFrom) {
+			userTxs = userTxs.filter(t => new Date(t.transactionDate) >= new Date(dateFrom));
+		}
+
+		if (dateTo) {
+			userTxs = userTxs.filter(t => new Date(t.transactionDate) <= new Date(dateTo));
+		}
+
+		// Apply sorting
+		userTxs.sort((a, b) => {
+			let aValue: any, bValue: any;
+			
+			switch (sortBy) {
+				case 'amount':
+					aValue = Math.abs(a.amount);
+					bValue = Math.abs(b.amount);
+					break;
+				case 'category':
+					const aCat = userCats.find(c => c.id === a.userCategoryId);
+					const bCat = userCats.find(c => c.id === b.userCategoryId);
+					aValue = aCat?.name || '';
+					bValue = bCat?.name || '';
+					break;
+				case 'date':
+				default:
+					aValue = new Date(a.transactionDate).getTime();
+					bValue = new Date(b.transactionDate).getTime();
+					break;
+			}
+
+			if (sortOrder === 'asc') {
+				return aValue > bValue ? 1 : -1;
+			} else {
+				return aValue < bValue ? 1 : -1;
+			}
+		});
+
+		// Apply pagination
+		const total = userTxs.length;
+		const totalPages = Math.ceil(total / limit);
+		const startIndex = (page - 1) * limit;
+		const paginatedTxs = userTxs.slice(startIndex, startIndex + limit);
+
+		// Format transactions
+		const formattedTxs = paginatedTxs.map(tx => {
+			const category = userCats.find(c => c.id === tx.userCategoryId);
+			const wallet = wallets.find(w => w.id === tx.walletId);
+			
+			return {
+				id: tx.id,
+				title: tx.content || 'Giao dịch',
+				amount: tx.amount,
+				displayAmount: Math.abs(tx.amount),
+				type: tx.type,
+				isIncome: tx.type === 1,
+				date: tx.transactionDate,
+				formattedDate: new Date(tx.transactionDate).toLocaleDateString('vi-VN', { 
+					day: '2-digit', 
+					month: '2-digit', 
+					year: 'numeric' 
+				}),
+				formattedTime: new Date(tx.transactionDate).toLocaleTimeString('vi-VN', {
+					hour: '2-digit',
+					minute: '2-digit'
+				}),
+				category: {
+					id: category?.id || 0,
+					name: category?.name || 'Chưa phân loại',
+					icon: category?.icon || 'tag-outline',
+				},
+				wallet: {
+					id: wallet?.id || 0,
+					name: wallet?.name || 'Ví mặc định',
+				},
+				note: tx.note || '',
+			};
+		});
+
+		return {
+			success: true,
+			data: formattedTxs,
+			pagination: {
+				page,
+				limit,
+				total,
+				totalPages,
+				hasNext: page < totalPages,
+				hasPrev: page > 1,
+			},
+			filters: {
+				search,
+				categoryId,
+				walletId,
+				type,
+				dateFrom,
+				dateTo,
+				sortBy,
+				sortOrder,
+			}
+		};
+	},
+
+	async getTransactionsStatistics(userId: number, options: {
+		dateFrom?: string;
+		dateTo?: string;
+		categoryId?: number;
+		walletId?: number;
+	} = {}) {
+		await delay(300);
+		
+		const { dateFrom, dateTo, categoryId, walletId } = options;
+		let userTxs = transactions.filter(t => t.userId === userId);
+
+		// Apply filters
+		if (categoryId) {
+			userTxs = userTxs.filter(t => t.userCategoryId === categoryId);
+		}
+
+		if (walletId) {
+			userTxs = userTxs.filter(t => t.walletId === walletId);
+		}
+
+		if (dateFrom) {
+			userTxs = userTxs.filter(t => new Date(t.transactionDate) >= new Date(dateFrom));
+		}
+
+		if (dateTo) {
+			userTxs = userTxs.filter(t => new Date(t.transactionDate) <= new Date(dateTo));
+		}
+
+		const totalIncome = userTxs
+			.filter(t => t.type === 1)
+			.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+
+		const totalExpense = userTxs
+			.filter(t => t.type === 2)
+			.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+
+		const transactionCount = userTxs.length;
+		const incomeCount = userTxs.filter(t => t.type === 1).length;
+		const expenseCount = userTxs.filter(t => t.type === 2).length;
+
+		return {
+			success: true,
+			data: {
+				totalIncome,
+				totalExpense,
+				netAmount: totalIncome - totalExpense,
+				transactionCount,
+				incomeCount,
+				expenseCount,
+				averageIncome: incomeCount > 0 ? totalIncome / incomeCount : 0,
+				averageExpense: expenseCount > 0 ? totalExpense / expenseCount : 0,
+			}
+		};
 	},
 };
 

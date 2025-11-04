@@ -142,163 +142,163 @@ export default function DetectedTransactionsModal({
   return (
     <>
     <Portal>
-      <Modal
-        visible={visible}
+    <Modal
+      visible={visible}
         onDismiss={onDismiss}
         contentContainerStyle={[styles.modal, { backgroundColor: theme.colors.surface}]}
-      >
-        {/* Header */}
-        <View style={[styles.header, { borderBottomColor: theme.colors.outline + '20' }]}>
-          <Text style={[styles.title, { color: theme.colors.onSurface }]}>
-            Giao dịch đã phát hiện
-          </Text>
-          <TouchableOpacity onPress={onDismiss} style={styles.closeButton}>
-            <MaterialCommunityIcons name="close" size={24} color={theme.colors.onSurface} />
-          </TouchableOpacity>
-        </View>
+    >
+          {/* Header */}
+          <View style={[styles.header, { borderBottomColor: theme.colors.outline + '20' }]}>
+            <Text style={[styles.title, { color: theme.colors.onSurface }]}>
+              Giao dịch đã phát hiện
+            </Text>
+            <TouchableOpacity onPress={onDismiss} style={styles.closeButton}>
+              <MaterialCommunityIcons name="close" size={24} color={theme.colors.onSurface} />
+            </TouchableOpacity>
+          </View>
 
-      {/* Content */}
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Intro Text */}
-        <Text style={[styles.introText, { color: theme.colors.onSurfaceVariant }]}>
-          AI đã phát hiện {transactions.length} giao dịch từ tin nhắn của bạn. Vui lòng kiểm tra và chỉnh sửa nếu cần.
-        </Text>
+          {/* Content */}
+          <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+            {/* Intro Text */}
+            <Text style={[styles.introText, { color: theme.colors.onSurfaceVariant }]}>
+              AI đã phát hiện {transactions.length} giao dịch từ tin nhắn của bạn. Vui lòng kiểm tra và chỉnh sửa nếu cần.
+            </Text>
 
-        {/* Transactions List */}
-        {transactions.map((transaction, index) => {
+            {/* Transactions List */}
+            {transactions.map((transaction, index) => {
               const category = transaction.category || getCategoryById(transaction.categoryId);
               const categoryColor = getIconColor(category.icon, theme);
-          const expenseCategories = categories.filter(c => c.type === 2);
+              const expenseCategories = categories.filter(c => c.type === 2);
 
-          return (
-            <TouchableOpacity
-              key={transaction.id}
-              style={[
-                styles.transactionCard,
-                index === transactions.length - 1 && styles.lastCard
-              ]}
-              onPress={() => handleTransactionPress(transaction)}
-              activeOpacity={0.7}
-            >
-              {/* Left side - Delete button */}
-              <TouchableOpacity
-                onPress={(e) => {
-                  e.stopPropagation();
-                  onDelete?.(transaction.id);
-                }}
-                style={styles.deleteButton}
-              >
-                <MaterialCommunityIcons name="delete-outline" size={20} color={theme.colors.error} />
-              </TouchableOpacity>
+              return (
+                <TouchableOpacity
+                  key={transaction.id}
+                  style={[
+                    styles.transactionCard,
+                    index === transactions.length - 1 && styles.lastCard
+                  ]}
+                  onPress={() => handleTransactionPress(transaction)}
+                  activeOpacity={0.7}
+                >
+                  {/* Left side - Delete button */}
+                  <TouchableOpacity
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      onDelete?.(transaction.id);
+                    }}
+                    style={styles.deleteButton}
+                  >
+                    <MaterialCommunityIcons name="delete-outline" size={20} color={theme.colors.error} />
+                  </TouchableOpacity>
 
-              {/* Middle - Transaction info */}
-              <View style={styles.transactionInfo}>
-                {/* Category selector */}
-                <Menu
-                  visible={categoryMenus[transaction.id] || false}
-                  onDismiss={() => closeCategoryMenu(transaction.id)}
-                  anchor={
+                  {/* Middle - Transaction info */}
+                  <View style={styles.transactionInfo}>
+                    {/* Category selector */}
+                    <Menu
+                      visible={categoryMenus[transaction.id] || false}
+                      onDismiss={() => closeCategoryMenu(transaction.id)}
+                      anchor={
+                        <TouchableOpacity
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            openCategoryMenu(transaction.id);
+                          }}
+                          style={[styles.categoryButton, { borderColor: categoryColor }]}
+                        >
+                          <Text style={[styles.categoryText, { color: categoryColor }]}>
+                            {category.name}
+                          </Text>
+                          <MaterialCommunityIcons name="chevron-down" size={16} color={categoryColor} />
+                        </TouchableOpacity>
+                      }
+                    >
+                      {expenseCategories.map((cat) => (
+                        <Menu.Item
+                          key={cat.id}
+                          onPress={() => {
+                            onCategoryChange?.(transaction.id, cat.id);
+                            closeCategoryMenu(transaction.id);
+                          }}
+                          title={cat.name}
+                          leadingIcon={cat.icon}
+                        />
+                      ))}
+                    </Menu>
+
+                    {/* Date */}
+                    <Text style={[styles.dateText, { color: theme.colors.onSurfaceVariant }]}>
+                      {formatDate(transaction.date)}
+                    </Text>
+
+                    {/* Description */}
+                    <Text style={[styles.descriptionText, { color: theme.colors.onSurface }]}>
+                      {transaction.description}
+                    </Text>
+                  </View>
+
+                  {/* Right side - Amount and edit button */}
+                  <View style={styles.rightSection}>
                     <TouchableOpacity
                       onPress={(e) => {
                         e.stopPropagation();
-                        openCategoryMenu(transaction.id);
+                        handleTransactionPress(transaction);
                       }}
-                      style={[styles.categoryButton, { borderColor: categoryColor }]}
+                      style={styles.menuButton}
                     >
-                      <Text style={[styles.categoryText, { color: categoryColor }]}>
-                        {category.name}
-                      </Text>
-                      <MaterialCommunityIcons name="chevron-down" size={16} color={categoryColor} />
+                      <MaterialCommunityIcons name="dots-vertical" size={20} color={theme.colors.onSurfaceVariant} />
                     </TouchableOpacity>
-                  }
-                >
-                  {expenseCategories.map((cat) => (
-                    <Menu.Item
-                      key={cat.id}
-                      onPress={() => {
-                        onCategoryChange?.(transaction.id, cat.id);
-                        closeCategoryMenu(transaction.id);
-                      }}
-                      title={cat.name}
-                      leadingIcon={cat.icon}
-                    />
-                  ))}
-                </Menu>
 
-                {/* Date */}
-                <Text style={[styles.dateText, { color: theme.colors.onSurfaceVariant }]}>
-                  {formatDate(transaction.date)}
-                </Text>
-
-                {/* Description */}
-                <Text style={[styles.descriptionText, { color: theme.colors.onSurface }]}>
-                  {transaction.description}
-                </Text>
-              </View>
-
-              {/* Right side - Amount and edit button */}
-              <View style={styles.rightSection}>
-                <TouchableOpacity
-                  onPress={(e) => {
-                    e.stopPropagation();
-                    handleTransactionPress(transaction);
-                  }}
-                  style={styles.menuButton}
-                >
-                  <MaterialCommunityIcons name="dots-vertical" size={20} color={theme.colors.onSurfaceVariant} />
+                    <Text style={[styles.amountText, { color: theme.colors.error }]}>
+                      -{formatCurrency(Math.abs(transaction.amount))}
+                    </Text>
+                  </View>
                 </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
 
-                <Text style={[styles.amountText, { color: theme.colors.error }]}>
-                  -{formatCurrency(Math.abs(transaction.amount))}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
-
-      {/* Footer - Save Button */}
-      <View style={[styles.footer, { borderTopColor: theme.colors.outline + '20' }]}>
-        <Button
-          mode="contained"
-          onPress={onSave}
-          disabled={loading || transactions.length === 0}
-          style={styles.saveButton}
-          buttonColor={theme.colors.primary}
-          textColor={theme.colors.onPrimary}
-          loading={loading}
-        >
-          {loading ? 'Đang lưu...' : 'Lưu giao dịch'}
-        </Button>
-      </View>
+          {/* Footer - Save Button */}
+          <View style={[styles.footer, { borderTopColor: theme.colors.outline + '20' }]}>
+            <Button
+              mode="contained"
+              onPress={onSave}
+              disabled={loading || transactions.length === 0}
+              style={styles.saveButton}
+              buttonColor={theme.colors.primary}
+              textColor={theme.colors.onPrimary}
+              loading={loading}
+            >
+              {loading ? 'Đang lưu...' : 'Lưu giao dịch'}
+            </Button>
+          </View>
       </Modal>
     </Portal>
 
     {/* Edit Transaction Modal - Uses its own Portal */}
-    {editingTransaction && (
-      <TransactionModal
-        visible={showEditModal}
-        mode="edit"
-        transaction={{
-          id: typeof editingTransaction.id === 'number' ? editingTransaction.id : 0,
-          userId: userId,
-          walletId: walletId || 1,
-          userCategoryId: editingTransaction.categoryId,
-          amount: Math.abs(editingTransaction.amount),
-          content: editingTransaction.description,
-          transactionDate: editingTransaction.date,
-          type: editingTransaction.type,
-          createdAt: new Date().toISOString(),
-        }}
-        categories={categories}
-        onDismiss={() => {
-          setShowEditModal(false);
-          setEditingTransaction(null);
-        }}
-        onSave={handleSaveTransaction}
-        loading={isSaving}
-      />
-    )}
+        {editingTransaction && (
+          <TransactionModal
+            visible={showEditModal}
+            mode="edit"
+            transaction={{
+              id: typeof editingTransaction.id === 'number' ? editingTransaction.id : 0,
+              userId: userId,
+              walletId: walletId || 1,
+              userCategoryId: editingTransaction.categoryId,
+              amount: Math.abs(editingTransaction.amount),
+              content: editingTransaction.description,
+              transactionDate: editingTransaction.date,
+              type: editingTransaction.type,
+              createdAt: new Date().toISOString(),
+            }}
+            categories={categories}
+            onDismiss={() => {
+              setShowEditModal(false);
+              setEditingTransaction(null);
+            }}
+            onSave={handleSaveTransaction}
+            loading={isSaving}
+          />
+        )}
   </>
   );
 }
