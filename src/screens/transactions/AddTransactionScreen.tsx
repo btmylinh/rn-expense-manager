@@ -29,6 +29,7 @@ import {
 import { useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { fakeApi } from '../../services/fakeApi';
+import { useAuth } from '../../contexts/AuthContext';
 import { useFocusEffect } from '@react-navigation/native';
 import { DatePickerModal } from 'react-native-paper-dates';
 import CategorySelectModal from '../../components/CategorySelectModal';
@@ -111,7 +112,8 @@ export default function AddTransactionScreen() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [isProcessingImage, setIsProcessingImage] = useState(false);
 
-  const userId = 1;
+  const { user } = useAuth();
+  const userId = user?.id || 1;
 
   useEffect(() => {
     let mounted = true;
@@ -328,6 +330,17 @@ export default function AddTransactionScreen() {
           setTransactionGroups(dashboard.data.transactionGroups || []);
         }
 
+        // Trigger notification checks and record streak activity
+        try {
+          await Promise.all([
+            fakeApi.checkBudgetAlerts(userId),
+            fakeApi.checkLargeTransactionAlerts(userId),
+            fakeApi.recordStreakActivity(userId, 'transaction')
+          ]);
+        } catch (error) {
+          // Silently fail - not critical
+        }
+
         setShowAddSheet(false);
         Alert.alert('Thành công', 'Đã thêm giao dịch mới');
       }
@@ -464,6 +477,17 @@ export default function AddTransactionScreen() {
       if (dashboard.success && dashboard.data) {
         setSelectedWallet(prev => prev ? { ...prev, amount: dashboard.data.wallet.balance } : null);
         setTransactionGroups(dashboard.data.transactionGroups || []);
+      }
+
+      // Trigger notification checks and record streak activity
+      try {
+        await Promise.all([
+          fakeApi.checkBudgetAlerts(userId),
+          fakeApi.checkLargeTransactionAlerts(userId),
+          fakeApi.recordStreakActivity(userId, 'transaction')
+        ]);
+      } catch (error) {
+        console.log('Failed to check notifications or record streak:', error);
       }
 
       Alert.alert('Thành công', `Đã lưu ${detectedTransactions.length} giao dịch`);
@@ -621,7 +645,6 @@ export default function AddTransactionScreen() {
               ]}>
                 {balanceVisible ? formatCurrency(currentBalance) : '••••••'}
               </Text>
-              <Text style={{ fontSize: 14, color: '#F97316', fontWeight: '600', marginTop: 4 }}>🔥 Streak: {userStreak} ngày</Text>
             </View>
             <View style={styles.balanceRight}>
               <IconButton

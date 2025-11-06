@@ -1,10 +1,27 @@
 {
   "users": [
-    { "id": 1, "email": "user@example.com", "password": "123456", "verified": true, "name": "Người dùng" }
+    { "id": 1, "email": "newstart@test.com", "password": "123456", "verified": true, "name": "Mới Bắt Đầu" },
+    { "id": 2, "email": "maintaining@test.com", "password": "123456", "verified": true, "name": "Đang Duy Trì" },
+    { "id": 3, "email": "warning@test.com", "password": "123456", "verified": true, "name": "Sắp Mất Streak" },
+    { "id": 4, "email": "lost@test.com", "password": "123456", "verified": true, "name": "Đã Mất Streak" },
+    { "id": 5, "email": "milestone7@test.com", "password": "123456", "verified": true, "name": "Mốc 7 Ngày" },
+    { "id": 6, "email": "milestone30@test.com", "password": "123456", "verified": true, "name": "Mốc 30 Ngày" },
+    { "id": 7, "email": "milestone100@test.com", "password": "123456", "verified": true, "name": "Mốc 100 Ngày" },
+    { "id": 8, "email": "freeze@test.com", "password": "123456", "verified": true, "name": "Đã Dùng Freeze" }
   ],
   "wallets": [
     { "id": 1, "user_id": 1, "name": "Ví chính", "amount": 1500000, "currency": "VND", "is_default": 1 },
-    { "id": 2, "user_id": 1, "name": "Ví tiết kiệm", "amount": 500000, "currency": "VND", "is_default": 0 }
+    { "id": 2, "user_id": 1, "name": "Ví tiết kiệm", "amount": 500000, "currency": "VND", "is_default": 0 },
+    { "id": 3, "user_id": 2, "name": "Ví chính", "amount": 2500000, "currency": "VND", "is_default": 1 },
+    { "id": 4, "user_id": 2, "name": "Ví tiết kiệm", "amount": 800000, "currency": "VND", "is_default": 0 },
+    { "id": 5, "user_id": 3, "name": "Ví chính", "amount": 1200000, "currency": "VND", "is_default": 1 },
+    { "id": 6, "user_id": 4, "name": "Ví chính", "amount": 900000, "currency": "VND", "is_default": 1 },
+    { "id": 7, "user_id": 5, "name": "Ví chính", "amount": 1800000, "currency": "VND", "is_default": 1 },
+    { "id": 8, "user_id": 6, "name": "Ví chính", "amount": 3200000, "currency": "VND", "is_default": 1 },
+    { "id": 9, "user_id": 6, "name": "Ví đầu tư", "amount": 5000000, "currency": "VND", "is_default": 0 },
+    { "id": 10, "user_id": 7, "name": "Ví chính", "amount": 4500000, "currency": "VND", "is_default": 1 },
+    { "id": 11, "user_id": 7, "name": "Ví tiết kiệm", "amount": 10000000, "currency": "VND", "is_default": 0 },
+    { "id": 12, "user_id": 8, "name": "Ví chính", "amount": 2100000, "currency": "VND", "is_default": 1 }
   ],
   "categories": [
     { "id": 1, "name": "Lương", "type": 1, "icon": "briefcase-outline"},
@@ -18,7 +35,17 @@
     { "id": 1, "user_id": 1, "name": "Ăn uống", "type": 2, "icon": "silverware-fork-knife" },
     { "id": 2, "user_id": 1, "name": "Giải trí", "type": 2, "icon": "gamepad-variant-outline" },
     { "id": 3, "user_id": 1, "name": "Di chuyển", "type": 2, "icon": "car-outline" },
-    { "id": 4, "user_id": 1, "name": "Lương", "type": 1, "icon": "briefcase-outline" }
+    { "id": 4, "user_id": 1, "name": "Lương", "type": 1, "icon": "briefcase-outline" },
+    { "id": 5, "user_id": 2, "name": "Ăn uống", "type": 2, "icon": "silverware-fork-knife" },
+    { "id": 6, "user_id": 2, "name": "Di chuyển", "type": 2, "icon": "car-outline" },
+    { "id": 7, "user_id": 2, "name": "Lương", "type": 1, "icon": "briefcase-outline" },
+    { "id": 8, "user_id": 3, "name": "Ăn uống", "type": 2, "icon": "silverware-fork-knife" },
+    { "id": 9, "user_id": 3, "name": "Di chuyển", "type": 2, "icon": "car-outline" },
+    { "id": 10, "user_id": 4, "name": "Ăn uống", "type": 2, "icon": "silverware-fork-knife" },
+    { "id": 11, "user_id": 5, "name": "Ăn uống", "type": 2, "icon": "silverware-fork-knife" },
+    { "id": 12, "user_id": 6, "name": "Ăn uống", "type": 2, "icon": "silverware-fork-knife" },
+    { "id": 13, "user_id": 7, "name": "Ăn uống", "type": 2, "icon": "silverware-fork-knife" },
+    { "id": 14, "user_id": 8, "name": "Ăn uống", "type": 2, "icon": "silverware-fork-knife" }
   ],
   "transactions": [
     { "id": 1, "user_id": 1, "wallet_id": 1, "user_category_id": 1, "amount": -150000, "transaction_date": "2025-10-29", "content": "Ăn trưa", "type": 2 },
@@ -32,7 +59,15 @@
     { "id": 9, "user_id": 1, "wallet_id": 1, "user_category_id": 1, "amount": -75000, "transaction_date": "2025-10-31", "content": "Hôm nay - Ăn sáng", "type": 2 },
     { "id": 10, "user_id": 1, "wallet_id": 1, "user_category_id": 1, "amount": -95000, "transaction_date": "2025-10-30", "content": "Hôm qua - Ăn tối", "type": 2 },
     { "id": 11, "user_id": 1, "wallet_id": 1, "user_category_id": 1, "amount": -120000, "transaction_date": "2025-10-28", "content": "Thứ Hai - Ăn trưa", "type": 2 },
-    { "id": 12, "user_id": 1, "wallet_id": 1, "user_category_id": 1, "amount": -65000, "transaction_date": "2025-10-27", "content": "Chủ Nhật - Cà phê", "type": 2 }
+    { "id": 12, "user_id": 1, "wallet_id": 1, "user_category_id": 1, "amount": -65000, "transaction_date": "2025-10-27", "content": "Chủ Nhật - Cà phê", "type": 2 },
+    { "id": 13, "user_id": 2, "wallet_id": 3, "user_category_id": 5, "amount": -80000, "transaction_date": "2025-11-04", "content": "Ăn trưa", "type": 2 },
+    { "id": 14, "user_id": 2, "wallet_id": 3, "user_category_id": 5, "amount": -100000, "transaction_date": "2025-11-03", "content": "Ăn tối", "type": 2 },
+    { "id": 15, "user_id": 3, "wallet_id": 5, "user_category_id": 8, "amount": -90000, "transaction_date": "2025-11-02", "content": "Ăn sáng", "type": 2 },
+    { "id": 16, "user_id": 4, "wallet_id": 6, "user_category_id": 10, "amount": -70000, "transaction_date": "2025-11-01", "content": "Cà phê", "type": 2 },
+    { "id": 17, "user_id": 5, "wallet_id": 7, "user_category_id": 11, "amount": -85000, "transaction_date": "2025-11-04", "content": "Ăn trưa", "type": 2 },
+    { "id": 18, "user_id": 6, "wallet_id": 8, "user_category_id": 12, "amount": -95000, "transaction_date": "2025-11-04", "content": "Ăn tối", "type": 2 },
+    { "id": 19, "user_id": 7, "wallet_id": 10, "user_category_id": 13, "amount": -110000, "transaction_date": "2025-11-04", "content": "Ăn trưa", "type": 2 },
+    { "id": 20, "user_id": 8, "wallet_id": 12, "user_category_id": 14, "amount": -75000, "transaction_date": "2025-11-04", "content": "Ăn sáng", "type": 2 }
   ],
   "budgets": [
     { "id": 1, "user_id": 1, "user_category_id": 1, "wallet_id": 1, "amount": 900000, "start_date": "2025-10-01", "end_date": "2025-10-31", "is_repeat": 1, "created_at": "2025-10-01T00:00:00.000Z", "updated_at": "2025-10-01T00:00:00.000Z" },
@@ -41,6 +76,300 @@
     { "id": 4, "user_id": 1, "user_category_id": 1, "wallet_id": 1, "amount": 2000000, "start_date": "2025-10-01", "end_date": "2025-12-31", "is_repeat": 0, "created_at": "2025-09-25T10:23:00.000Z", "updated_at": "2025-09-25T10:23:00.000Z" },
     { "id": 5, "user_id": 1, "user_category_id": 2, "wallet_id": 1, "amount": 1500000, "start_date": "2025-11-01", "end_date": "2026-01-31", "is_repeat": 0, "created_at": "2025-10-25T10:23:00.000Z", "updated_at": "2025-10-25T10:23:00.000Z" },
     { "id": 6, "user_id": 1, "user_category_id": 3, "wallet_id": 1, "amount": 300000, "start_date": "2025-01-01", "end_date": "2025-12-31", "is_repeat": 0, "created_at": "2025-01-01T10:23:00.000Z", "updated_at": "2025-01-01T10:23:00.000Z" }
+  ],
+  "notifications": [
+    {
+      "id": 1,
+      "user_id": 1,
+      "type": "budget_warning",
+      "title": "Sắp hết ngân sách",
+      "message": "Bạn đã sử dụng 80% ngân sách Ăn uống. Còn lại 180,000₫",
+      "data": {
+        "budgetId": 1,
+        "budgetName": "Ăn uống",
+        "percentage": 80,
+        "remaining": 180000,
+        "budgetAmount": 900000
+      },
+      "is_read": false,
+      "created_at": "2025-11-04T10:30:00.000Z",
+      "scheduled_for": null
+    },
+    {
+      "id": 2,
+      "user_id": 1,
+      "type": "large_transaction",
+      "title": "Giao dịch lớn",
+      "message": "Bạn vừa chi 450,000₫ cho Ăn nhà hàng. Đây là giao dịch lớn nhất tuần này.",
+      "data": {
+        "transactionId": 7,
+        "amount": 450000,
+        "category": "Ăn uống"
+      },
+      "is_read": false,
+      "created_at": "2025-11-10T19:15:00.000Z",
+      "scheduled_for": null
+    },
+    {
+      "id": 3,
+      "user_id": 1,
+      "type": "budget_exceeded",
+      "title": "Vượt ngân sách!",
+      "message": "Bạn đã chi 1,020,000₫ vượt quá ngân sách Ăn uống (900,000₫)",
+      "data": {
+        "budgetId": 1,
+        "budgetName": "Ăn uống",
+        "currentSpent": 1020000,
+        "budgetAmount": 900000,
+        "exceeded": 120000
+      },
+      "is_read": true,
+      "created_at": "2025-11-12T20:00:00.000Z",
+      "scheduled_for": null
+    },
+    {
+      "id": 4,
+      "user_id": 1,
+      "type": "weekly_report",
+      "title": "Báo cáo tuần",
+      "message": "Tuần này bạn đã tiết kiệm được 200,000₫ so với tuần trước. Tuyệt vời! 🎉",
+      "data": {
+        "weeklySpent": 800000,
+        "previousWeek": 1000000,
+        "saved": 200000,
+        "period": "Tuần 45/2025"
+      },
+      "is_read": true,
+      "created_at": "2025-11-03T09:00:00.000Z",
+      "scheduled_for": null
+    },
+    {
+      "id": 5,
+      "user_id": 1,
+      "type": "transaction_reminder",
+      "title": "Đừng quên ghi chép!",
+      "message": "Bạn chưa ghi chép giao dịch nào hôm nay. Hãy cập nhật chi tiêu của bạn.",
+      "data": {
+        "reminderType": "daily_evening"
+      },
+      "is_read": false,
+      "created_at": "2025-11-04T20:00:00.000Z",
+      "scheduled_for": "2025-11-04T20:00:00.000Z"
+    },
+    {
+      "id": 6,
+      "user_id": 1,
+      "type": "goal_achieved",
+      "title": "Chúc mừng!",
+      "message": "Bạn đã hoàn thành mục tiêu tiết kiệm tháng 10!",
+      "data": {
+        "goalName": "Tiết kiệm tháng 10",
+        "savedAmount": 500000,
+        "targetAmount": 500000
+      },
+      "is_read": true,
+      "created_at": "2025-10-31T23:59:00.000Z",
+      "scheduled_for": null
+    },
+    {
+      "id": 7,
+      "user_id": 1,
+      "type": "sync_complete",
+      "title": "Đồng bộ hoàn tất",
+      "message": "Dữ liệu của bạn đã được đồng bộ thành công.",
+      "data": {
+        "syncedAt": "2025-11-04T08:00:00.000Z",
+        "itemCount": 25
+      },
+      "is_read": true,
+      "created_at": "2025-11-04T08:00:00.000Z",
+      "scheduled_for": null
+    }
+  ],
+  "notification_settings": [
+    {
+      "user_id": 1,
+      "budget_alerts": true,
+      "transaction_reminders": true,
+      "weekly_reports": true,
+      "security_alerts": true,
+      "push_enabled": true,
+      "quiet_hours_enabled": false,
+      "quiet_hours_start": "22:00",
+      "quiet_hours_end": "08:00",
+      "updated_at": "2025-11-01T00:00:00.000Z"
+    }
+  ],
+  "streaks": [
+    {
+      "id": 1,
+      "user_id": 1,
+      "streak_days": 0,
+      "last_transaction_date": "2025-11-04T09:30:00.000Z",
+      "created_at": "2025-11-04T09:30:00.000Z",
+      "updated_at": "2025-11-04T09:30:00.000Z"
+    },
+    {
+      "id": 2,
+      "user_id": 2,
+      "streak_days": 15,
+      "last_transaction_date": "2025-11-04T08:15:00.000Z",
+      "created_at": "2025-10-20T00:00:00.000Z",
+      "updated_at": "2025-11-04T08:15:00.000Z"
+    },
+    {
+      "id": 3,
+      "user_id": 3,
+      "streak_days": 5,
+      "last_transaction_date": "2025-11-02T14:20:00.000Z",
+      "created_at": "2025-10-28T00:00:00.000Z",
+      "updated_at": "2025-11-02T14:20:00.000Z"
+    },
+    {
+      "id": 4,
+      "user_id": 4,
+      "streak_days": 0,
+      "last_transaction_date": "2025-10-30T16:45:00.000Z",
+      "created_at": "2025-10-15T00:00:00.000Z",
+      "updated_at": "2025-10-30T16:45:00.000Z"
+    },
+    {
+      "id": 5,
+      "user_id": 5,
+      "streak_days": 30,
+      "last_transaction_date": "2025-11-04T11:30:00.000Z",
+      "created_at": "2025-10-05T00:00:00.000Z",
+      "updated_at": "2025-11-04T11:30:00.000Z"
+    },
+    {
+      "id": 6,
+      "user_id": 6,
+      "streak_days": 7,
+      "last_transaction_date": "2025-11-04T13:45:00.000Z",
+      "created_at": "2025-10-28T00:00:00.000Z",
+      "updated_at": "2025-11-04T13:45:00.000Z"
+    },
+    {
+      "id": 7,
+      "user_id": 7,
+      "streak_days": 100,
+      "last_transaction_date": "2025-11-04T07:20:00.000Z",
+      "created_at": "2025-07-27T00:00:00.000Z",
+      "updated_at": "2025-11-04T07:20:00.000Z"
+    }
+  ],
+  "streak_history": [
+    {
+      "id": 1,
+      "user_id": 1,
+      "date": "2025-11-04",
+      "has_activity": true,
+      "activity_type": "transaction",
+      "created_at": "2025-11-04T09:30:00.000Z"
+    },
+    {
+      "id": 2,
+      "user_id": 1,
+      "date": "2025-11-03",
+      "has_activity": true,
+      "activity_type": "budget_check",
+      "created_at": "2025-11-03T14:20:00.000Z"
+    },
+    {
+      "id": 3,
+      "user_id": 1,
+      "date": "2025-11-02",
+      "has_activity": true,
+      "activity_type": "transaction",
+      "created_at": "2025-11-02T11:45:00.000Z"
+    },
+    {
+      "id": 4,
+      "user_id": 1,
+      "date": "2025-11-01",
+      "has_activity": true,
+      "activity_type": "dashboard_view",
+      "created_at": "2025-11-01T08:15:00.000Z"
+    },
+    {
+      "id": 5,
+      "user_id": 1,
+      "date": "2025-10-31",
+      "has_activity": true,
+      "activity_type": "transaction",
+      "created_at": "2025-10-31T16:30:00.000Z"
+    },
+    {
+      "id": 6,
+      "user_id": 1,
+      "date": "2025-10-30",
+      "has_activity": false,
+      "activity_type": "manual_checkin",
+      "created_at": "2025-10-30T20:45:00.000Z"
+    },
+    {
+      "id": 7,
+      "user_id": 1,
+      "date": "2025-10-29",
+      "has_activity": true,
+      "activity_type": "transaction",
+      "created_at": "2025-10-29T12:10:00.000Z"
+    },
+    {
+      "id": 8,
+      "user_id": 1,
+      "date": "2025-10-28",
+      "has_activity": true,
+      "activity_type": "budget_update",
+      "created_at": "2025-10-28T19:25:00.000Z"
+    },
+    {
+      "id": 9,
+      "user_id": 1,
+      "date": "2025-10-27",
+      "has_activity": true,
+      "activity_type": "transaction",
+      "created_at": "2025-10-27T10:55:00.000Z"
+    },
+    {
+      "id": 10,
+      "user_id": 1,
+      "date": "2025-10-26",
+      "has_activity": false,
+      "activity_type": "dashboard_view",
+      "created_at": "2025-10-26T15:40:00.000Z"
+    },
+    {
+      "id": 11,
+      "user_id": 1,
+      "date": "2025-10-25",
+      "has_activity": true,
+      "activity_type": "transaction",
+      "created_at": "2025-10-25T13:20:00.000Z"
+    },
+    {
+      "id": 12,
+      "user_id": 1,
+      "date": "2025-11-24",
+      "has_activity": true,
+      "activity_type": "transaction",
+      "created_at": "2025-10-24T09:00:00.000Z"
+    }
+  ],
+  "streak_settings": [
+    {
+      "id": 1,
+      "user_id": 1,
+      "daily_reminder_enabled": true,
+      "reminder_time": "20:00",
+      "weekend_mode": false,
+      "freeze_available": 1,
+      "freeze_used_this_week": 0,
+      "best_streak": 25,
+      "total_active_days": 45,
+      "created_at": "2025-10-01T00:00:00.000Z",
+      "updated_at": "2025-11-04T00:00:00.000Z"
+    }
   ],
   "currentWalletByUser": { "1": 1 }
 }

@@ -23,6 +23,8 @@ import { formatCurrency } from '../../utils/format';
 import { fakeApi } from '../../services/fakeApi';
 import AppBar from '../../components/AppBar';
 import TransactionModal from '../../components/TransactionModal';
+import NotificationBell from '../../components/NotificationBell';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface Transaction {
   id: number;
@@ -53,9 +55,10 @@ interface FilterState {
   walletId: number | null;
 }
 
-export default function TransactionsScreen() {
+export default function TransactionsScreen({ navigation }: any) {
   const theme = useAppTheme();
-  const userId = 1;
+  const { user } = useAuth();
+  const userId = user?.id || 1;
 
   // Data state
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -269,7 +272,16 @@ export default function TransactionsScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <AppBar title="Giao dịch" />
+      <AppBar 
+        title={`Giao dịch`} 
+        align="center"
+        rightIcons={[
+          {
+            name: 'bell-outline',
+            onPress: () => navigation.navigate('Notifications'),
+          }
+        ]}
+      />
 
       {/* Search and Filter Bar */}
       <View style={[styles.filterBar, { backgroundColor: theme.colors.surface }]}>
@@ -443,16 +455,22 @@ export default function TransactionsScreen() {
           </View>
         ) : transactionGroups.length === 0 ? (
           <View style={styles.emptyContainer}>
-            <MaterialCommunityIcons name="receipt-text-outline" size={64} color={theme.colors.onSurfaceVariant} />
+            <View style={styles.emptyIconWrapper}>
+              <MaterialCommunityIcons 
+                name={searchQuery || filter.startDate || filter.categoryId || filter.walletId ? "magnify" : "receipt-text-outline"} 
+                size={64} 
+                color={theme.colors.primary} 
+              />
+            </View>
             <Text style={[styles.emptyText, { color: theme.colors.onSurface }]}>
               {searchQuery || filter.startDate || filter.categoryId || filter.walletId
                 ? 'Không tìm thấy giao dịch'
-                : 'Chưa có giao dịch'}
+                : 'Bắt đầu quản lý tài chính'}
             </Text>
             <Text style={[styles.emptySubtext, { color: theme.colors.onSurfaceVariant }]}>
               {searchQuery || filter.startDate || filter.categoryId || filter.walletId
-                ? 'Thử thay đổi bộ lọc'
-                : 'Nhấn "+" để thêm giao dịch đầu tiên'}
+                ? 'Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm'
+                : 'Nhấn nút "+" bên dưới để thêm giao dịch đầu tiên và khám phá tính năng quản lý chi tiêu thông minh'}
             </Text>
           </View>
         ) : (
@@ -559,6 +577,24 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  appBarContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingRight: 8,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  notificationContainer: {
+    position: 'absolute',
+    right: 8,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+  },
   filterBar: {
     padding: 16,
     paddingBottom: 8,
@@ -599,15 +635,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 64,
+    paddingHorizontal: 32,
   },
   emptyText: {
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: '700',
     marginTop: 16,
+    textAlign: 'center',
   },
   emptySubtext: {
     fontSize: 14,
     marginTop: 8,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  emptyIconWrapper: {
+    opacity: 0.4,
   },
   dateHeader: {
     flexDirection: 'row',

@@ -3,28 +3,31 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { useAppTheme } from '../../theme';
 import { fakeApi } from '../../services/fakeApi';
-import { Modal, Portal, Snackbar, ProgressBar, Button, IconButton } from 'react-native-paper';
+import { Modal, Portal, Snackbar, ProgressBar, Button, IconButton, Card } from 'react-native-paper';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigators/RootNavigator';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import AppBar from '../../components/AppBar';
+import { useAuth } from '../../contexts/AuthContext';
 import BudgetContent from './BudgetContent';
 import WalletSelectModal from '../../components/WalletSelectModal';
 
 export default function BudgetsScreen() {
-  const theme = useAppTheme();
+	const theme = useAppTheme();
 	const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-	const userId = 1; // mock
-  const [budgets, setBudgets] = useState<any[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+	const { user } = useAuth();
+	const userId = user?.id || 1;
+	const [budgets, setBudgets] = useState<any[]>([]);
+	const [categories, setCategories] = useState<any[]>([]);
+	const [loading, setLoading] = useState(true);
 	const [activeTab, setActiveTab] = useState(0);
 	const [timeTabs, setTimeTabs] = useState<Array<{ label: string, startDate: string, endDate: string }>>([]);
 	const [isCreateModalVisible, setCreateModalVisible] = useState(false);
 	const [isEdit, setIsEdit] = useState(false);
 	const [formBudget, setFormBudget] = useState<any>({});
 	const [selectedBudget, setSelectedBudget] = useState<any | null>(null);
-  const [snack, setSnack] = useState('');
+	const [snack, setSnack] = useState('');
 	const [isDetailVisible, setDetailVisible] = useState(false);
 	const [detailBudget, setDetailBudget] = useState<any>(null);
 	const [budgetTransactions, setBudgetTransactions] = useState<any[]>([]);
@@ -70,32 +73,32 @@ export default function BudgetsScreen() {
 	}
 
 	// Load initial wallet and categories
-  useEffect(() => {
-    (async () => {
+	useEffect(() => {
+		(async () => {
 			const [cats, cw, ws] = await Promise.all([
 				fakeApi.getUserCategories(userId),
 				fakeApi.getCurrentWalletId(userId),
 				fakeApi.getWallets(userId),
 			]);
-      setCategories(cats);
+			setCategories(cats);
 			setWallets(ws);
 			if ((cw as any)?.walletId) {
 				setCurrentWalletId((cw as any).walletId);
 				const w = await fakeApi.getWallet(userId, (cw as any).walletId as number);
 				if ((w as any)?.wallet?.name) setWalletName((w as any).wallet.name);
 			}
-    })();
-  }, []);
+		})();
+	}, []);
 
 	// Load budgets by wallet (API already calculates spent and chartData)
 	useEffect(() => {
 		(async () => {
 			if (!currentWalletId) return;
 			setLoading(true);
-			
+
 			// API already filters active budgets and calculates spent/chartData
 			const data = await fakeApi.getBudgets(userId, currentWalletId);
-			
+
 			// Filter only active budgets (end_date >= today)
 			const now = new Date();
 			const todayOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -112,22 +115,22 @@ export default function BudgetsScreen() {
 				const key = `${b.startDate}_${b.endDate}`;
 				if (!groups.has(key)) groups.set(key, { startDate: b.startDate, endDate: b.endDate });
 			});
-			
+
 			const periods = currentPeriods();
 			const tabs: Array<{ label: string, startDate: string, endDate: string }> = [];
-			
+
 			groups.forEach(({ startDate, endDate }) => {
 				let label = `${formatVNDate(startDate)} - ${formatVNDate(endDate)}`;
-				
+
 				// Check if it matches standard periods
 				if (startDate === periods.week.start && endDate === periods.week.end) label = 'Tuần này';
 				else if (startDate === periods.month.start && endDate === periods.month.end) label = 'Tháng này';
 				else if (startDate === periods.quarter.start && endDate === periods.quarter.end) label = 'Quý này';
 				else if (startDate === periods.year.start && endDate === periods.year.end) label = 'Năm nay';
-				
+
 				tabs.push({ label, startDate, endDate });
 			});
-			
+
 			// Sort tabs: standard periods first, then custom by date
 			const order = { 'Tuần này': 1, 'Tháng này': 2, 'Quý này': 3, 'Năm nay': 4 };
 			tabs.sort((a, b) => {
@@ -136,7 +139,7 @@ export default function BudgetsScreen() {
 				if (aOrder !== bOrder) return aOrder - bOrder;
 				return a.startDate < b.startDate ? 1 : -1; // Custom dates: newest first
 			});
-			
+
 			setTimeTabs(tabs);
 			setActiveTab(0);
 			setLoading(false);
@@ -148,15 +151,15 @@ export default function BudgetsScreen() {
 		const unsubscribe = (navigation as any).addListener('focus', async () => {
 			if (!currentWalletId) return;
 			setLoading(true);
-			
+
 			// Reload categories and budgets (API already calculates spent/chartData)
 			const [cats, data] = await Promise.all([
 				fakeApi.getUserCategories(userId),
 				fakeApi.getBudgets(userId, currentWalletId)
 			]);
-			
+
 			setCategories(cats);
-			
+
 			// Filter active budgets
 			const now = new Date();
 			const todayOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -243,19 +246,19 @@ export default function BudgetsScreen() {
 		});
 	};
 
-  return (
+	return (
 		<View style={[styles.container, { backgroundColor: theme.colors.background, padding: theme.spacing(3) }]}>
 			{/* App Bar with wallet selector (replace title) */}
-			<View style={[theme.ui.appBar, styles.appBar, { backgroundColor: theme.colors.surface, paddingTop: 0 }]}> 
+			<View style={[theme.ui.appBar, styles.appBar, { backgroundColor: theme.colors.surface, paddingTop: 0 }]}>
 				<TouchableOpacity style={styles.walletSelector} onPress={() => setWalletSheetVisible(true)}>
 					<Text style={[styles.walletTitle, { color: theme.colors.onSurface }]}>{walletName}</Text>
 					<IconButton icon="chevron-down" size={20} iconColor={theme.colors.onSurface} />
-			</TouchableOpacity>
-				
+				</TouchableOpacity>
+
 				{/* History Icon */}
-				<IconButton 
-					icon="history" 
-				size={24} 
+				<IconButton
+					icon="history"
+					size={24}
 					iconColor={theme.colors.onSurface}
 					onPress={() => navigation.navigate('BudgetHistory')}
 				/>
@@ -268,7 +271,7 @@ export default function BudgetsScreen() {
 				contentContainerStyle={styles.tabsContent}
 			>
 				{timeTabs.map((tab, idx) => (
-              <TouchableOpacity
+					<TouchableOpacity
 						key={tab.label + tab.startDate + tab.endDate}
 						style={[styles.tabBtn, { backgroundColor: activeTab === idx ? theme.colors.primary : theme.colors.surface }]}
 						onPress={() => setActiveTab(idx)}
@@ -276,8 +279,8 @@ export default function BudgetsScreen() {
 						<Text style={[styles.tabText, { color: activeTab === idx ? '#fff' : theme.colors.onSurface }]}>
 							{tab.label}
 						</Text>
-              </TouchableOpacity>
-            ))}
+					</TouchableOpacity>
+				))}
 			</ScrollView>
 
 			{timeTabs.length > 0 ? (
@@ -299,11 +302,72 @@ export default function BudgetsScreen() {
 					}}
 				/>
 			) : (
-				<View style={styles.emptyWrap}>
-					<Text style={[styles.emptyText, { color: theme.colors.onSurfaceVariant }]}>Không có ngân sách hiệu lực.</Text>
-          </View>
-      )}
-      <Portal>
+				<View style={styles.emptyContainer}>
+					<Card style={[styles.emptyCard, { backgroundColor: theme.colors.surface }]}>
+						<Card.Content style={styles.emptyContent}>
+							<View style={[styles.emptyIconContainer, { backgroundColor: theme.colors.primaryContainer }]}>
+								<MaterialCommunityIcons
+									name="wallet-outline"
+									size={64}
+									color={theme.colors.primary}
+								/>
+							</View>
+
+							<Text style={[styles.emptyTitle, { color: theme.colors.onSurface }]}>
+								Chưa có ngân sách nào
+							</Text>
+
+							<Text style={[styles.emptyDescription, { color: theme.colors.onSurfaceVariant }]}>
+								Tạo ngân sách để quản lý chi tiêu hiệu quả hơn. Theo dõi và kiểm soát các khoản chi theo từng danh mục.
+							</Text>
+
+							<View style={styles.emptyFeatures}>
+								<View style={styles.emptyFeatureItem}>
+									<MaterialCommunityIcons name="chart-timeline-variant" size={24} color={theme.colors.primary} />
+									<Text style={[styles.emptyFeatureText, { color: theme.colors.onSurface }]}>
+										Theo dõi chi tiêu theo thời gian
+									</Text>
+								</View>
+
+								<View style={styles.emptyFeatureItem}>
+									<MaterialCommunityIcons name="bell-alert" size={24} color={theme.colors.primary} />
+									<Text style={[styles.emptyFeatureText, { color: theme.colors.onSurface }]}>
+										Cảnh báo khi vượt ngân sách
+									</Text>
+								</View>
+
+								<View style={styles.emptyFeatureItem}>
+									<MaterialCommunityIcons name="target" size={24} color={theme.colors.primary} />
+									<Text style={[styles.emptyFeatureText, { color: theme.colors.onSurface }]}>
+										Đặt mục tiêu tiết kiệm
+									</Text>
+								</View>
+							</View>
+
+							<Button
+								mode="contained"
+								icon="plus"
+								onPress={() => {
+									const periods = currentPeriods();
+									navigation.navigate('BudgetCreate', {
+										categories,
+										budget: {
+											startDate: periods.month.start,
+											endDate: periods.month.end,
+											walletId: currentWalletId
+										},
+										editMode: false
+									});
+								}}
+								style={styles.emptyButton}
+							>
+								Bắt đầu tạo ngân sách
+							</Button>
+						</Card.Content>
+					</Card>
+				</View>
+			)}
+			<Portal>
 				<Modal visible={isDetailVisible} onDismiss={() => setDetailVisible(false)} contentContainerStyle={[theme.ui.modalContainer, styles.modalContainer, { backgroundColor: theme.colors.surface }]}>
 					{detailBudget && (
 						<>
@@ -333,8 +397,8 @@ export default function BudgetsScreen() {
 						</>
 					)}
 				</Modal>
-        <Snackbar visible={!!snack} onDismiss={() => setSnack('')}>{snack}</Snackbar>
-      </Portal>
+				<Snackbar visible={!!snack} onDismiss={() => setSnack('')}>{snack}</Snackbar>
+			</Portal>
 
 			<WalletSelectModal
 				visible={walletSheetVisible}
@@ -348,23 +412,85 @@ export default function BudgetsScreen() {
 					setWalletSheetVisible(false);
 				}}
 			/>
-    </View>
-  );
+		</View>
+	);
 }
 
 const styles = StyleSheet.create({
 	container: { flex: 1 },
 	appBar: { borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
 	walletSelector: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', flex: 1 },
-    walletTitle: { fontSize: 18 },
+	walletTitle: { fontSize: 18 },
 	tabsWrap: { flexGrow: 0, marginVertical: 12 },
 	tabsContent: { gap: 9 },
 	tabBtn: { paddingVertical: 9, paddingHorizontal: 21, borderRadius: 18, minWidth: 80, alignItems: 'center' },
 	tabText: { fontWeight: '700', fontSize: 13 },
+
+	// Empty State Styles
+	emptyContainer: {
+		flex: 1,
+		justifyContent: 'center',
+		alignItems: 'center',
+		paddingHorizontal: 16,
+		paddingVertical: 32,
+	},
+	emptyCard: {
+		width: '100%',
+		maxWidth: 500,
+		elevation: 2,
+		borderRadius: 16,
+	},
+	emptyContent: {
+		alignItems: 'center',
+		paddingVertical: 24,
+	},
+	emptyIconContainer: {
+		width: 120,
+		height: 120,
+		borderRadius: 60,
+		justifyContent: 'center',
+		alignItems: 'center',
+		marginBottom: 24,
+	},
+	emptyTitle: {
+		fontSize: 24,
+		fontWeight: 'bold',
+		marginBottom: 12,
+		textAlign: 'center',
+	},
+	emptyDescription: {
+		fontSize: 16,
+		textAlign: 'center',
+		marginBottom: 32,
+		lineHeight: 24,
+		paddingHorizontal: 16,
+	},
+	emptyFeatures: {
+		width: '100%',
+		marginBottom: 32,
+		gap: 16,
+	},
+	emptyFeatureItem: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 12,
+		paddingHorizontal: 16,
+	},
+	emptyFeatureText: {
+		fontSize: 15,
+		flex: 1,
+	},
+	emptyButton: {
+		minWidth: 200,
+		borderRadius: 12,
+	},
+
+	// Old empty styles (deprecated but kept for compatibility)
 	emptyWrap: { alignItems: 'center', marginTop: 36 },
 	emptyText: { fontSize: 16 },
 	createBtn: { alignItems: 'center', paddingVertical: 15, borderRadius: 12, marginTop: 18, marginBottom: 4 },
 	createBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+
 	modalContainer: { margin: 16, padding: 18, borderRadius: 14 },
 	modalHeader: { alignItems: 'center', marginBottom: 16 },
 	modalTitle: { fontWeight: '700', fontSize: 18 },

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,12 @@ import { useAppTheme, getIconColor } from '../../theme';
 import { formatCurrency } from '../../utils/format';
 import { fakeApi } from '../../services/fakeApi';
 import AppBar from '../../components/AppBar';
+import NotificationBell from '../../components/NotificationBell';
+import StreakCard from '../../components/StreakCard';
+import { StreakWarningModal, StreakLostModal, StreakMilestoneModal } from '../../components/StreakModals';
+import { getStreakState, StreakState } from '../../utils/streakHelpers';
+import { useAuth } from '../../contexts/AuthContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
@@ -27,9 +33,10 @@ interface CategorySpending {
   amount: number;
 }
 
-export default function DashboardScreen() {
+export default function DashboardScreen({ navigation }: any) {
   const theme = useAppTheme();
-  const userId = 1;
+  const { user } = useAuth();
+  const userId = user?.id || 1;
 
   // State
   const [timeRange, setTimeRange] = useState<'week' | 'month'>('week');
@@ -41,30 +48,53 @@ export default function DashboardScreen() {
   const [categories, setCategories] = useState<any[]>([]);
   const [barChartData, setBarChartData] = useState<any[]>([]);
   const [pieChartData, setPieChartData] = useState<any[]>([]);
+  const [streakData, setStreakData] = useState<any>(null);
+  const [streakLoading, setStreakLoading] = useState(true);
+  
+  // Streak modal states
+  const [showWarningModal, setShowWarningModal] = useState(false);
+  const [showLostModal, setShowLostModal] = useState(false);
+  const [showMilestoneModal, setShowMilestoneModal] = useState(false);
+  
+  // Track if milestone modal was already shown for current milestone
+  const shownMilestonesRef = useRef<Set<number>>(new Set());
 
   // Load data
   useEffect(() => {
     loadDashboardData();
-  }, [timeRange]);
+  }, [timeRange, userId]);
 
   useFocusEffect(
     useCallback(() => {
       loadDashboardData();
-    }, [timeRange])
+      
+      // Check for weekly report generation (only on Sundays)
+      const today = new Date();
+      if (today.getDay() === 0) { // Sunday
+        fakeApi.generateWeeklyReport(userId).catch(console.error);
+      }
+
+      // Check for streak warnings and reminders
+      fakeApi.checkStreakWarnings().catch(console.error);
+      fakeApi.checkDailyReminders().catch(console.error);
+    }, [timeRange, userId])
   );
 
   const loadDashboardData = async () => {
     try {
       setLoading(true);
+      setStreakLoading(true);
+      setStreakData(null); // Clear previous streak data
 
       // Get all data using new APIs
-      const [summaryResult, barChartResult, pieChartResult, topCategoriesResult, recentTxsResult, categoriesResult] = await Promise.all([
+      const [summaryResult, barChartResult, pieChartResult, topCategoriesResult, recentTxsResult, categoriesResult, streakResult] = await Promise.all([
         fakeApi.getDashboardSummary(userId, timeRange),
         fakeApi.getDashboardBarChartData(userId, timeRange),
         fakeApi.getDashboardPieChartData(userId, timeRange),
         fakeApi.getDashboardTopCategories(userId, timeRange, 3),
         fakeApi.getDashboardRecentTransactions(userId, 3),
         fakeApi.getUserCategories(userId),
+        fakeApi.getStreakData(userId),
       ]);
 
       if (summaryResult.success) {
@@ -108,8 +138,59 @@ export default function DashboardScreen() {
       if (categoriesResult) {
         setCategories(categoriesResult as any[]);
       }
+
+      if (streakResult.success) {
+        const newStreakData = streakResult.data;
+        const streakStatus = getStreakState(newStreakData);
+        
+        // Check if milestone modal was already shown for this session
+        const STORAGE_KEY = `milestone_shown_${userId}_${streakStatus.milestone}`;
+        
+        // Show appropriate modal based on streak state
+        if (streakStatus.state === StreakState.WARNING && !showWarningModal) {
+          setShowWarningModal(true);
+        } else if (streakStatus.state === StreakState.LOST && !showLostModal) {
+          setShowLostModal(true);
+        } else if (streakStatus.state === StreakState.MILESTONE && !showMilestoneModal) {
+          // Check if this milestone was already shown
+          const milestoneNum = streakStatus.milestone || 0;
+          if (!shownMilestonesRef.current.has(milestoneNum)) {
+            // Check AsyncStorage to see if shown today
+            AsyncStorage.getItem(STORAGE_KEY).then((value) => {
+              const today = new Date().toDateString();
+              if (value !== today) {
+                // Not shown today, show it
+                shownMilestonesRef.current.add(milestoneNum);
+                setShowMilestoneModal(true);
+                // Save to storage
+                AsyncStorage.setItem(STORAGE_KEY, today);
+              }
+            });
+          }
+        }
+        
+        setStreakData(newStreakData);
+        setStreakLoading(false);
+        
+        // Record dashboard view as streak activity
+        if (!newStreakData.todayCompleted) {
+          try {
+            await fakeApi.recordStreakActivity(userId, 'dashboard_view');
+            // Refresh streak data after recording activity
+            const updatedStreak = await fakeApi.getStreakData(userId);
+            if (updatedStreak.success) {
+              setStreakData(updatedStreak.data);
+            }
+          } catch (error) {
+            // Silently fail - not critical
+          }
+        }
+      } else {
+        setStreakLoading(false);
+      }
     } catch (error) {
       console.error('Error loading dashboard data:', error);
+      setStreakLoading(false);
     } finally {
       setLoading(false);
     }
@@ -139,9 +220,40 @@ export default function DashboardScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <AppBar title="Tổng quan" />
+      <AppBar 
+        title={`Tổng quan`} 
+        align="center"
+        rightIcons={[
+          {
+            name: 'bell-outline',
+            onPress: () => navigation.navigate('Notifications'),
+          }
+        ]}
+      />
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Streak Section */}
+        {streakData ? (
+          <StreakCard 
+            key={`streak-${userId}`}
+            streakStatus={getStreakState(streakData)}
+            loading={streakLoading}
+            onPress={() => {
+              navigation.navigate('StreakDetail');
+            }}
+            onActionPress={() => {
+              const status = getStreakState(streakData);
+              if (status.state === StreakState.WARNING || status.state === StreakState.LOST) {
+                navigation.navigate('Thêm');
+              }
+            }}
+          />
+        ) : (
+          <View style={{ padding: 16 }}>
+            <Text>Loading streak data for userId: {userId}...</Text>
+          </View>
+        )}
+
         {/* Time Range Selector */}
         <View style={styles.timeRangeSelector}>
           <Chip
@@ -203,6 +315,7 @@ export default function DashboardScreen() {
               )}
             </Card.Content>
           </Card>
+
         </View>
 
         {/* Bar Chart - Expense Comparison */}
@@ -242,8 +355,14 @@ export default function DashboardScreen() {
               </View>
             ) : (
               <View style={styles.emptyChart}>
-                <Text style={[styles.emptyChartText, { color: theme.colors.onSurfaceVariant }]}>
-                  Chưa có dữ liệu
+                <View style={styles.emptyIconWrapper}>
+                  <MaterialCommunityIcons name="chart-bar" size={48} color={theme.colors.onSurfaceVariant} />
+                </View>
+                <Text style={[styles.emptyChartText, { color: theme.colors.onSurface, fontWeight: '600', marginBottom: 4 }]}>
+                  Hãy bắt đầu ghi chép!
+                </Text>
+                <Text style={[styles.emptyChartSubtext, { color: theme.colors.onSurfaceVariant, fontSize: 13 }]}>
+                  Thêm giao dịch để xem biểu đồ chi tiêu
                 </Text>
               </View>
             )}
@@ -301,8 +420,14 @@ export default function DashboardScreen() {
               </View>
             ) : (
               <View style={styles.emptyChart}>
-                <Text style={[styles.emptyChartText, { color: theme.colors.onSurfaceVariant }]}>
-                  Chưa có dữ liệu
+                <View style={styles.emptyIconWrapper}>
+                  <MaterialCommunityIcons name="chart-donut" size={48} color={theme.colors.onSurfaceVariant} />
+                </View>
+                <Text style={[styles.emptyChartText, { color: theme.colors.onSurface, fontWeight: '600', marginBottom: 4 }]}>
+                  Khám phá chi tiêu của bạn
+                </Text>
+                <Text style={[styles.emptyChartSubtext, { color: theme.colors.onSurfaceVariant, fontSize: 13 }]}>
+                  Ghi chép để phân tích theo danh mục
                 </Text>
               </View>
             )}
@@ -350,8 +475,14 @@ export default function DashboardScreen() {
               </View>
             ) : (
               <View style={styles.emptyList}>
-                <Text style={[styles.emptyText, { color: theme.colors.onSurfaceVariant }]}>
-                  Chưa có dữ liệu
+                <View style={styles.emptyIconWrapper}>
+                  <MaterialCommunityIcons name="trophy-outline" size={40} color={theme.colors.onSurfaceVariant} />
+                </View>
+                <Text style={[styles.emptyText, { color: theme.colors.onSurface, fontWeight: '600', marginBottom: 4 }]}>
+                  Hãy bắt đầu ghi chép!
+                </Text>
+                <Text style={[styles.emptySubtext, { color: theme.colors.onSurfaceVariant, fontSize: 13 }]}>
+                  Thêm giao dịch để xem thống kê
                 </Text>
               </View>
             )}
@@ -401,14 +532,55 @@ export default function DashboardScreen() {
               </View>
             ) : (
               <View style={styles.emptyList}>
-                <Text style={[styles.emptyText, { color: theme.colors.onSurfaceVariant }]}>
-                  Chưa có giao dịch
+                <View style={styles.emptyIconWrapper}>
+                  <MaterialCommunityIcons name="clock-outline" size={40} color={theme.colors.onSurfaceVariant} />
+                </View>
+                <Text style={[styles.emptyText, { color: theme.colors.onSurface, fontWeight: '600', marginBottom: 4 }]}>
+                  Bắt đầu hành trình của bạn
+                </Text>
+                <Text style={[styles.emptySubtext, { color: theme.colors.onSurfaceVariant, fontSize: 13 }]}>
+                  Nhấn "+" để thêm giao dịch đầu tiên
                 </Text>
               </View>
             )}
           </Card.Content>
         </Card>
       </ScrollView>
+
+      {/* Streak Modals */}
+      {streakData && (
+        <>
+          <StreakWarningModal
+            visible={showWarningModal}
+            onDismiss={() => setShowWarningModal(false)}
+            onActionPress={() => {
+              setShowWarningModal(false);
+              navigation.navigate('Thêm');
+            }}
+            streakDays={streakData.streak?.streakDays || 0}
+          />
+
+          <StreakLostModal
+            visible={showLostModal}
+            onDismiss={() => setShowLostModal(false)}
+            onRestartPress={() => {
+              setShowLostModal(false);
+              navigation.navigate('Thêm');
+            }}
+            lostStreakDays={streakData.settings?.bestStreak || 0}
+          />
+
+          <StreakMilestoneModal
+            visible={showMilestoneModal}
+            onDismiss={() => setShowMilestoneModal(false)}
+            onSharePress={() => {
+              setShowMilestoneModal(false);
+              // TODO: Implement share functionality
+            }}
+            milestone={getStreakState(streakData).milestone || 0}
+          />
+        </>
+      )}
     </View>
   );
 }
@@ -483,7 +655,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   emptyChartText: {
-    fontSize: 14,
+    fontSize: 15,
+    textAlign: 'center',
+  },
+  emptyChartSubtext: {
+    fontSize: 13,
+    textAlign: 'center',
   },
   pieChartContainer: {
     alignItems: 'center',
@@ -611,10 +788,19 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   emptyList: {
-    paddingVertical: 24,
+    paddingVertical: 32,
     alignItems: 'center',
   },
   emptyText: {
-    fontSize: 14,
+    fontSize: 15,
+    textAlign: 'center',
+  },
+  emptySubtext: {
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  emptyIconWrapper: {
+    opacity: 0.3,
+    marginBottom: 8,
   },
 });

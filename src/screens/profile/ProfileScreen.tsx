@@ -7,9 +7,12 @@ import AppBar from '../../components/AppBar';
 import { fakeApi } from '../../services/fakeApi';
 import WalletManagerSheet from '../../components/WalletManagerSheet';
 import CategoryManagerSheet from '../../components/CategoryManagerSheet';
+import { useAuth } from '../../contexts/AuthContext';
 
 export default function ProfileScreen({ navigation }: any) {
 	const theme = useAppTheme();
+	const { user, logout } = useAuth();
+	const userId = user?.id || 1;
 	const [loading, setLoading] = useState(false);
 	const [userName, setUserName] = useState<string>('');
 	const [userEmail, setUserEmail] = useState<string>('');
@@ -20,7 +23,6 @@ export default function ProfileScreen({ navigation }: any) {
 	const [curPwd, setCurPwd] = useState('');
 	const [newPwd, setNewPwd] = useState('');
 	const [cfmPwd, setCfmPwd] = useState('');
-	const userId = 1; // Demo user id
 
 	// Wallet management state (delegated to component)
 	const [walletSheetVisible, setWalletSheetVisible] = useState(false);
@@ -28,18 +30,18 @@ export default function ProfileScreen({ navigation }: any) {
 	const [categorySheetVisible, setCategorySheetVisible] = useState(false);
 
 	useEffect(() => {
+		// Sử dụng thông tin từ AuthContext
+		if (user) {
+			setUserName(user.name || 'Người dùng');
+			setUserEmail(user.email || '');
+		}
+
+		// Load wallet info
 		let mounted = true;
 		const load = async () => {
 			try {
 				setLoading(true);
-				const [res, cw] = await Promise.all([
-					fakeApi.getUser(userId),
-					fakeApi.getCurrentWalletId(userId)
-				]);
-				if (mounted && res.success && res.user) {
-					setUserName(res.user.name || 'Người dùng');
-					setUserEmail(res.user.email || '');
-				}
+				const cw = await fakeApi.getCurrentWalletId(userId);
 				if (mounted && (cw as any)?.walletId) setCurrentWalletId((cw as any).walletId);
 			} finally {
 				setLoading(false);
@@ -49,7 +51,7 @@ export default function ProfileScreen({ navigation }: any) {
 		return () => {
 			mounted = false;
 		};
-	}, []);
+	}, [user, userId]);
 
 	const initials = useMemo(() => {
 		const parts = (userName || '').trim().split(' ').filter(Boolean);
@@ -85,7 +87,7 @@ export default function ProfileScreen({ navigation }: any) {
 	const handleLogout = () => {
 		Alert.alert('Đăng xuất', 'Bạn có chắc muốn đăng xuất?', [
 			{ text: 'Hủy' },
-			{ text: 'Đăng xuất', style: 'destructive', onPress: () => navigation.replace('Auth') },
+			{ text: 'Đăng xuất', style: 'destructive', onPress: logout },
 		]);
 	};
 
@@ -123,6 +125,12 @@ export default function ProfileScreen({ navigation }: any) {
 						title="Danh mục của tôi"
 						left={props => <List.Icon {...props} icon="tag-outline" />}
 						onPress={() => setCategorySheetVisible(true)}
+					/>
+					<Divider />
+					<List.Item
+						title="Cài đặt Streak"
+						left={props => <List.Icon {...props} icon="fire"/>}
+						onPress={() => navigation.navigate('StreakSettings')}
 					/>
 					<Divider />
 					<List.Item

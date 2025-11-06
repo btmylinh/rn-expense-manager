@@ -1,123 +1,210 @@
-// screens/LoginScreen.tsx
-import React, { useMemo, useState } from 'react';
-import { View, AccessibilityInfo, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
-import { Button, TextInput, HelperText, Text } from 'react-native-paper';
-import { fakeApi } from '../../services/fakeApi';
+import React, { useState, useMemo } from 'react';
+import { View, StyleSheet, KeyboardAvoidingView, Platform, Image } from 'react-native';
+import { Text, TextInput, Button, HelperText } from 'react-native-paper';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAppTheme } from '../../theme';
+import { useAuth } from '../../contexts/AuthContext';
+import { AuthStackParamList } from '../../navigators/AuthNavigator';
+
+interface LoginScreenProps {
+  navigation: NativeStackNavigationProp<AuthStackParamList, 'Login'>;
+}
 
 const isEmail = (v: string) => /.+@.+\..+/.test(v);
 
-export default function LoginScreen({ navigation }: any) {
+export default function LoginScreen({ navigation }: LoginScreenProps) {
 	const theme = useAppTheme();
-	const [email, setEmail] = useState('');
-	const [password, setPassword] = useState('');
-	const [showPassword, setShowPassword] = useState(false);
-	const [loading, setLoading] = useState(false);
-	const [formError, setFormError] = useState<string | null>(null);
+  const { login, isLoading } = useAuth();
+	// Dev mode: pre-fill credentials for faster testing
+	const [email, setEmail] = useState('newstart@test.com');
+  const [password, setPassword] = useState('123456');
+  const [showPassword, setShowPassword] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
 
-	const emailError = useMemo(() => (email.length === 0 ? '' : isEmail(email) ? '' : 'Email không hợp lệ'), [email]);
-	const passwordError = useMemo(() => (password.length === 0 ? '' : password.length < 6 ? 'Mật khẩu tối thiểu 6 ký tự' : ''), [password]);
+  const emailError = useMemo(() => (email.length === 0 ? '' : isEmail(email) ? '' : 'Email không hợp lệ'), [email]);
+  const passwordError = useMemo(() => (password.length === 0 ? '' : password.length < 6 ? 'Mật khẩu tối thiểu 6 ký tự' : ''), [password]);
 
-	const onSubmit = async () => {
-		setFormError(null);
-		if (emailError || passwordError || !email || !password) {
-			setFormError('Vui lòng kiểm tra lại thông tin');
-			return;
-		}
-		try {
-			setLoading(true);
-			const result = await fakeApi.login(email, password);
+  const handleLogin = async () => {
+    setLoginError(null);
+    
+    if (!email.trim() || !password.trim()) {
+      setLoginError('Vui lòng nhập đầy đủ thông tin');
+      return;
+    }
 
-			if (!result.success) {
-				setFormError(result.message || 'Đăng nhập thất bại');
-				return;
-			}
+    if (emailError || passwordError) {
+      setLoginError('Vui lòng kiểm tra lại thông tin');
+      return;
+    }
 
-			// Check setup status
-			if (result.user) {
-				const setupStatus = await fakeApi.getSetupStatus(result.user.id);
-				const needsSetup = !setupStatus.hasWallet || !setupStatus.hasCurrency || !setupStatus.hasCategories;
-
-				if (needsSetup) {
-					navigation.replace('Setup', { email: result.user.email, userId: result.user.id });
-				} else {
-					navigation.replace('Tabs', { initialTab: 'Thêm' });
-				}
-			} else {
-				setFormError('Thông tin người dùng không hợp lệ');
-			}
-		} catch (e: any) {
-			setFormError(e.message ?? 'Đã xảy ra lỗi');
-			AccessibilityInfo.announceForAccessibility?.('Lỗi: ' + (e.message ?? 'Đã xảy ra lỗi'));
-		} finally {
-			setLoading(false);
-		}
-	};
-
-	const handleDemoLogin = async () => {
-		try {
-			setLoading(true);
-			const result = await fakeApi.quickLoginDemo();
-			if (result.success && result.user) {
-				navigation.replace('Tabs');
-			}
-		} finally {
-			setLoading(false);
-		}
+    const result = await login(email.trim(), password);
+    if (!result.success) {
+      setLoginError(result.message || 'Đăng nhập thất bại');
+    }
 	};
 
 	return (
-		<KeyboardAvoidingView behavior={Platform.select({ ios: 'padding', android: 'height' })} style={{ flex: 1 }}>
-			<ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
-				<View style={{ flex: 1, justifyContent: 'center', padding: theme.spacing(3) }}>
-					{/* Header / Logo */}
-					<View style={{ alignItems: 'center', marginBottom: theme.spacing(3) }}>
-						<Text style={[theme.semantic.typography.h2, { color: theme.colors.primary }]}>Money Manager</Text>
-					</View>
-					{/* Form */}
-					<TextInput
-						accessibilityLabel="Email"
-						label="Email"
-						placeholder="Nhập email"
-						value={email}
-						onChangeText={setEmail}
-						autoCapitalize="none"
-						keyboardType="email-address"
-						left={<TextInput.Icon icon="email-outline" />}
-						error={!!emailError}
-						style={{ marginBottom: 8 }}
-					/>
-					{!!emailError && <HelperText type="error" style={{ marginBottom: 8 }}>{emailError}</HelperText>}
-					<TextInput
-						accessibilityLabel="Mật khẩu"
-						label="Mật khẩu"
-						placeholder="••••••"
-						value={password}
-						onChangeText={setPassword}
-						secureTextEntry={!showPassword}
-						left={<TextInput.Icon icon="lock-outline" />}
-						right={<TextInput.Icon icon={showPassword ? 'eye-off' : 'eye'} onPress={() => setShowPassword(s => !s)} forceTextInputFocus={false} />}
-						error={!!passwordError}
-						style={{ marginBottom: 8 }}
-					/>
-					{!!passwordError && <HelperText type="error" style={{ marginBottom: 8 }}>{passwordError}</HelperText>}
-					<View style={{ alignItems: 'flex-end', marginBottom: 16 }}>
-						<Button onPress={() => navigation.navigate('ForgotPassword')} compact>{'Quên mật khẩu?'}</Button>
-					</View>
-					{/* Actions */}
-					<Button mode="contained" loading={loading} onPress={onSubmit} style={{ alignSelf: 'center', width: '90%', minHeight: 48, justifyContent: 'center', borderRadius: theme.radius.pill, marginBottom: 8 }}>
-						Đăng nhập
-					</Button>
-					{!!formError && <HelperText type="error" style={{ textAlign: 'center', marginBottom: 8 }}>{formError}</HelperText>}
-					<Button mode="outlined" loading={loading} onPress={handleDemoLogin} style={{ alignSelf: 'center', width: '90%', minHeight: 48, justifyContent: 'center', borderRadius: theme.radius.pill, marginBottom: 8 }}>
-						Đăng nhập Demo
-					</Button>
-					{/* Footer switch */}
-					<View style={{ alignItems: 'center', marginTop: theme.spacing(1) }}>
-						<Text style={[theme.semantic.typography.small, { color: theme.colors.onSurfaceVariant }]}>Chưa có tài khoản? <Text onPress={() => navigation.navigate('Register')} style={{ color: theme.colors.primary }}>Đăng ký ngay</Text></Text>
-					</View>
-				</View>
-			</ScrollView>
-		</KeyboardAvoidingView>
-	);
+    <KeyboardAvoidingView 
+      style={[styles.container, { backgroundColor: theme.colors.background }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
+      <View style={styles.content}>
+        {/* Logo/Icon Section */}
+        <View style={styles.logoSection}>
+          <View style={[styles.logoCircle, { backgroundColor: theme.colors.primary + '15' }]}>
+            <Image
+              source={require('../../assets/images/logo.png')}
+              style={{ width: 72, height: 72 }}
+              resizeMode="contain"
+            />
+          </View>
+          <Text style={[styles.title, { color: theme.colors.onBackground }]}>
+            Chào mừng trở lại
+          </Text>
+          <Text style={[styles.subtitle, { color: theme.colors.onSurfaceVariant }]}>
+            Đăng nhập để tiếp tục quản lý chi tiêu
+          </Text>
+        </View>
+
+        {/* Login Form */}
+        <View style={styles.formContainer}>
+				<TextInput
+					label="Email"
+					value={email}
+					onChangeText={setEmail}
+            mode="outlined"
+            style={styles.input}
+            keyboardType="email-address"
+					autoCapitalize="none"
+            left={<TextInput.Icon icon="email-outline" />}
+            error={!!emailError}
+				/>
+        {!!emailError && <HelperText type="error" visible={!!emailError} style={styles.errorText}>{emailError}</HelperText>}
+
+				<TextInput
+					label="Mật khẩu"
+					value={password}
+					onChangeText={setPassword}
+            mode="outlined"
+            style={styles.input}
+            secureTextEntry={!showPassword}
+            left={<TextInput.Icon icon="lock-outline" />}
+            right={
+              <TextInput.Icon 
+                icon={showPassword ? "eye-off" : "eye"} 
+                onPress={() => setShowPassword(!showPassword)}
+              />
+            }
+            error={!!passwordError}
+          />
+        {!!passwordError && <HelperText type="error" visible={!!passwordError} style={styles.errorText}>{passwordError}</HelperText>}
+
+          <Button
+            mode="text"
+            onPress={() => navigation.navigate('ForgotPassword')}
+            style={styles.forgotButton}
+            labelStyle={{ fontSize: 14 }}
+          >
+            Quên mật khẩu?
+          </Button>
+
+          {loginError && (
+            <HelperText type="error" visible={!!loginError} style={{ textAlign: 'center', marginBottom: 8 }}>
+              {loginError}
+            </HelperText>
+          )}
+
+          <Button
+            mode="contained"
+            onPress={handleLogin}
+            loading={isLoading}
+            disabled={isLoading || !email.trim() || !password.trim()}
+            style={styles.loginButton}
+            contentStyle={styles.loginButtonContent}
+          >
+            Đăng nhập
+          </Button>
+        </View>
+
+        {/* Register Link */}
+        <View style={styles.footer}>
+          <Text style={[styles.footerText, { color: theme.colors.onSurfaceVariant }]}>
+            Chưa có tài khoản?{' '}
+          </Text>
+          <Button
+            mode="text"
+            onPress={() => navigation.navigate('Register')}
+            compact
+            labelStyle={{ fontSize: 14 }}
+          >
+            Đăng ký ngay
+          </Button>
+        </View>
+      </View>
+    </KeyboardAvoidingView>
+  );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  content: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: 24,
+  },
+  logoSection: {
+    alignItems: 'center',
+    marginBottom: 23,
+  },
+  logoCircle: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  subtitle: {
+    fontSize: 15,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  formContainer: {
+    width: '100%',
+  },
+  input: {
+    marginBottom: 4,
+  },
+  errorText: {
+    marginTop: -4,
+    marginBottom: 8,
+  },
+  forgotButton: {
+    alignSelf: 'flex-end',
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  loginButton: {
+    borderRadius: 12,
+  },
+  loginButtonContent: {
+    paddingVertical: 8,
+  },
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 18,
+  },
+  footerText: {
+    fontSize: 14,
+  },
+});

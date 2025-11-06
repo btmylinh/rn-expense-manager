@@ -193,37 +193,19 @@ export default function DetectedTransactionsModal({
 
                   {/* Middle - Transaction info */}
                   <View style={styles.transactionInfo}>
-                    {/* Category selector */}
-                    <Menu
-                      visible={categoryMenus[transaction.id] || false}
-                      onDismiss={() => closeCategoryMenu(transaction.id)}
-                      anchor={
-                        <TouchableOpacity
-                          onPress={(e) => {
-                            e.stopPropagation();
-                            openCategoryMenu(transaction.id);
-                          }}
-                          style={[styles.categoryButton, { borderColor: categoryColor }]}
-                        >
-                          <Text style={[styles.categoryText, { color: categoryColor }]}>
-                            {category.name}
-                          </Text>
-                          <MaterialCommunityIcons name="chevron-down" size={16} color={categoryColor} />
-                        </TouchableOpacity>
-                      }
-                    >
-                      {expenseCategories.map((cat) => (
-                        <Menu.Item
-                          key={cat.id}
-                          onPress={() => {
-                            onCategoryChange?.(transaction.id, cat.id);
-                            closeCategoryMenu(transaction.id);
-                          }}
-                          title={cat.name}
-                          leadingIcon={cat.icon}
+                    {/* Category display (view only) */}
+                    <View style={styles.categoryDisplay}>
+                      <View style={[styles.categoryIconSmall, { backgroundColor: categoryColor + '22' }]}>
+                        <MaterialCommunityIcons 
+                          name={category.icon as any || 'tag-outline'} 
+                          size={14} 
+                          color={categoryColor} 
                         />
-                      ))}
-                    </Menu>
+                      </View>
+                      <Text style={[styles.categoryNameText, { color: categoryColor }]}>
+                        {category.name}
+                      </Text>
+                    </View>
 
                     {/* Date */}
                     <Text style={[styles.dateText, { color: theme.colors.onSurfaceVariant }]}>
@@ -360,20 +342,23 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 8,
   },
-  categoryButton: {
+  categoryDisplay: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
     alignSelf: 'flex-start',
     marginBottom: 8,
   },
-  categoryText: {
+  categoryIconSmall: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 6,
+  },
+  categoryNameText: {
     fontSize: 13,
     fontWeight: '600',
-    marginRight: 4,
   },
   dateText: {
     fontSize: 12,

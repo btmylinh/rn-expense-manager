@@ -10,6 +10,11 @@ let categories: Array<{id: number, name: string, type: number, icon: string, col
 let userCategories: Array<{id: number, userId: number, name: string, type: number, icon: string, color?: string}> = [];
 let transactions: Array<{id: number, userId: number, walletId: number, userCategoryId: number, amount: number, transactionDate: string, content: string, type: number, note?: string}> = [];
 let budgets: Array<{id: number, userId: number, userCategoryId: number, walletId: number, amount: number, startDate: string, endDate: string, isRepeat?: number, createdAt?: string, updatedAt?: string}> = [];
+let notifications: Array<{id: number, userId: number, type: string, title: string, message: string, data?: any, isRead: boolean, createdAt: string, scheduledFor?: string}> = [];
+let notificationSettings: Array<{userId: number, budgetAlerts: boolean, transactionReminders: boolean, weeklyReports: boolean, securityAlerts: boolean, pushEnabled: boolean, quietHoursEnabled: boolean, quietHoursStart: string, quietHoursEnd: string, updatedAt: string}> = [];
+let streaks: Array<{id: number, userId: number, streakDays?: number, streak_days?: number, lastTransactionDate?: string, last_transaction_date?: string, createdAt?: string, created_at?: string, updatedAt?: string, updated_at?: string}> = [];
+let streakHistory: Array<{id: number, userId: number, date: string, hasActivity: boolean, activityType: string, createdAt: string}> = [];
+let streakSettings: Array<{id: number, userId: number, dailyReminderEnabled?: boolean, daily_reminder_enabled?: boolean, reminderTime?: string, reminder_time?: string, weekendMode?: boolean, weekend_mode?: boolean, freezeAvailable?: number, freeze_available?: number, freezeUsedThisWeek?: number, freeze_used_this_week?: number, bestStreak?: number, best_streak?: number, totalActiveDays?: number, total_active_days?: number, createdAt?: string, created_at?: string, updatedAt?: string, updated_at?: string}> = [];
 let currentUserId: number | null = null;
 
 // Initialize mock data deterministically from JSON (map snake_case -> camelCase)
@@ -58,6 +63,68 @@ try {
 			isRepeat: b.is_repeat ?? 0,
 			createdAt: b.created_at,
 			updatedAt: b.updated_at
+		}));
+	}
+	if (seed.notifications) {
+		notifications = seed.notifications.map((n: any) => ({
+			id: n.id,
+			userId: n.user_id,
+			type: n.type,
+			title: n.title,
+			message: n.message,
+			data: n.data,
+			isRead: n.is_read,
+			createdAt: n.created_at,
+			scheduledFor: n.scheduled_for
+		}));
+	}
+	if (seed.notification_settings) {
+		notificationSettings = seed.notification_settings.map((s: any) => ({
+			userId: s.user_id,
+			budgetAlerts: s.budget_alerts,
+			transactionReminders: s.transaction_reminders,
+			weeklyReports: s.weekly_reports,
+			securityAlerts: s.security_alerts,
+			pushEnabled: s.push_enabled,
+			quietHoursEnabled: s.quiet_hours_enabled,
+			quietHoursStart: s.quiet_hours_start,
+			quietHoursEnd: s.quiet_hours_end,
+			updatedAt: s.updated_at
+		}));
+	}
+	if (seed.streaks) {
+		streaks = seed.streaks.map((s: any) => ({
+			id: s.id,
+			userId: s.user_id,
+			streakDays: s.streak_days,
+			lastTransactionDate: s.last_transaction_date,
+			createdAt: s.created_at,
+			updatedAt: s.updated_at
+		}));
+	}
+	if (seed.streak_history) {
+		streakHistory = seed.streak_history.map((h: any) => ({
+			id: h.id,
+			userId: h.user_id,
+			date: h.date,
+			hasActivity: h.has_activity,
+			activityType: h.activity_type,
+			createdAt: h.created_at
+		}));
+	}
+	if (seed.streak_settings) {
+		streakSettings = seed.streak_settings.map((s: any) => ({
+			id: s.id,
+			userId: s.user_id,
+			dailyReminderEnabled: s.daily_reminder_enabled,
+			reminderTime: s.reminder_time,
+			weekendMode: s.weekend_mode,
+			freezeAvailable: s.freeze_available,
+			freezeUsedThisWeek: s.freeze_used_this_week,
+			bestStreak: s.best_streak,
+			totalActiveDays: s.total_active_days,
+			createdAt: s.created_at,
+			updatedAt: s.updated_at
 		}));
 	}
 } catch {}
@@ -167,6 +234,32 @@ function nextPeriod(startDate: string, endDate: string): { start: string, end: s
 }
 
 export const fakeApi = {
+	// ============ AUTH ENDPOINTS ============
+	
+	async login(email: string, password: string) {
+		await delay(500);
+		
+		const user = users.find(u => u.email === email && u.password === password);
+		
+		if (user) {
+			return {
+				success: true,
+				user: {
+					id: user.id,
+					email: user.email,
+					name: user.name,
+					verified: user.verified
+				},
+				token: `fake-token-${user.id}`
+			};
+		} else {
+			return {
+				success: false,
+				message: 'Email hoặc mật khẩu không đúng'
+			};
+		}
+	},
+
 	// Auth
 	async register(email: string, password: string) {
 		await delay(600);
@@ -180,18 +273,11 @@ export const fakeApi = {
 		const otp = generateOTP();
 		pendingOtps.push({ email, otp, expires: Date.now() + 600000 });
 		
-		console.log('📧 OTP for', email, ':', otp); // Log OTP for testing
-		return { success: true, message: 'Đăng ký thành công. Vui lòng kiểm tra email để lấy mã OTP.', otp };
-	},
-
-	async quickLoginDemo() {
-		await delay(300);
-		const user = users.find(u => u.id === mockUserId);
-		if (!user) {
-			return { success: false, message: 'Không tìm thấy tài khoản demo' };
+		// Log OTP for testing in development
+		if (__DEV__) {
+			console.log('📧 OTP for', email, ':', otp);
 		}
-		currentUserId = user.id;
-		return { success: true, token: 'fake-token', user: { id: user.id, email: user.email } };
+		return { success: true, message: 'Đăng ký thành công. Vui lòng kiểm tra email để lấy mã OTP.', otp };
 	},
 
 	async confirmEmail(email: string, otp: string) {
@@ -209,19 +295,6 @@ export const fakeApi = {
 		user.verified = true;
 		pendingOtps = pendingOtps.filter(p => p.email !== email);
 		return { success: true, message: 'Xác thực email thành công' };
-	},
-
-	async login(email: string, password: string) {
-		await delay(500);
-		const user = users.find(u => u.email === email && u.password === password);
-		if (!user) {
-			return { success: false, message: 'Email hoặc mật khẩu không đúng' };
-		}
-		if (!user.verified) {
-			return { success: false, message: 'Email chưa được xác thực' };
-		}
-		currentUserId = user.id;
-		return { success: true, token: 'fake-token', user: { id: user.id, email: user.email } };
 	},
 
 	async resetPassword(email: string) {
@@ -690,6 +763,10 @@ export const fakeApi = {
 			return { success: false, message: 'Giao dịch không tồn tại' };
 		}
 
+	const oldDate = (transaction.transactionDate || '').split('T')[0];
+	const newDate = data.transactionDate?.split('T')[0];
+	const dateChanged = newDate && newDate !== oldDate;
+
 		// Update transaction fields
 		if (data.amount !== undefined) transaction.amount = data.amount;
 		if (data.transactionDate !== undefined) transaction.transactionDate = data.transactionDate;
@@ -709,6 +786,48 @@ export const fakeApi = {
 			}
 		}
 
+	// If date changed, update streak history
+	if (dateChanged && oldDate && newDate) {
+		// Check if old date had other transactions
+		const hasOtherOnOldDate = transactions.some(
+			t => t.id !== transactionId &&
+			     t.userId === userId && 
+			     t.transactionDate.split('T')[0] === oldDate
+		);
+		
+		// If no other transactions on old date, mark as inactive
+		if (!hasOtherOnOldDate) {
+			const oldHistory = streakHistory.find(
+				h => h.userId === userId && h.date === oldDate
+			);
+		if (oldHistory && oldHistory.activityType === 'transaction') {
+			oldHistory.hasActivity = false;
+		}
+		}
+		
+		// Add/update history for new date
+		let newHistory = streakHistory.find(
+			h => h.userId === userId && h.date === newDate
+		);
+		
+		if (!newHistory) {
+			newHistory = {
+				id: Math.max(...streakHistory.map(h => h.id), 0) + 1,
+				userId,
+				date: newDate,
+				hasActivity: true,
+				activityType: 'transaction',
+				createdAt: new Date().toISOString()
+			};
+			streakHistory.push(newHistory);
+		} else {
+			newHistory.hasActivity = true;
+		}
+		
+		// Recalculate entire streak
+		await this.recalculateStreak(userId);
+	}
+
 		return { success: true, transaction };
 	},
 
@@ -720,6 +839,7 @@ export const fakeApi = {
 		}
 
 		const transaction = transactions[transactionIndex];
+	const transactionDate = transaction.transactionDate.split('T')[0];
 		
 		// Update wallet balance (reverse the transaction)
 		const wallet = wallets.find(w => w.id === transaction.walletId && w.userId === userId);
@@ -730,7 +850,104 @@ export const fakeApi = {
 		// Remove transaction
 		transactions.splice(transactionIndex, 1);
 		
-		return { success: true, message: 'Xóa giao dịch thành công' };
+	// Check if there are other transactions on same day
+	const hasOtherTransactions = transactions.some(
+		t => t.userId === userId && 
+		     t.transactionDate.split('T')[0] === transactionDate
+	);
+	
+	// If no other transactions on that day, update streak history
+	if (!hasOtherTransactions && transactionDate) {
+		const historyIndex = streakHistory.findIndex(
+			h => h.userId === userId && h.date === transactionDate
+		);
+		
+		if (historyIndex >= 0) {
+			const activityType = streakHistory[historyIndex].activityType;
+			
+			// Only mark as inactive if it was a transaction (not freeze)
+			if (activityType === 'transaction') {
+				streakHistory[historyIndex].hasActivity = false;
+			}
+		}
+		
+		// Recalculate streak from scratch
+		await this.recalculateStreak(userId);
+	}
+	
+	return { success: true, message: 'Xóa giao dịch thành công và cập nhật streak' };
+},
+
+// Bulk delete transactions
+async bulkDeleteTransactions(userId: number, transactionIds: number[]) {
+	await delay(500);
+	
+	if (!transactionIds || transactionIds.length === 0) {
+		return { success: false, message: 'Không có giao dịch nào được chọn' };
+	}
+	
+	const deletedDates: Set<string> = new Set();
+	let deletedCount = 0;
+	
+	// Delete each transaction and track dates
+	for (const transactionId of transactionIds) {
+		const transactionIndex = transactions.findIndex(
+			t => t.id === transactionId && t.userId === userId
+		);
+		
+		if (transactionIndex >= 0) {
+			const transaction = transactions[transactionIndex];
+			const transactionDate = transaction.transactionDate.split('T')[0];
+			
+			// Update wallet balance (reverse the transaction)
+			const wallet = wallets.find(w => w.id === transaction.walletId && w.userId === userId);
+			if (wallet) {
+				wallet.amount -= (transaction.type === 1 ? transaction.amount : -transaction.amount);
+			}
+			
+			// Remove transaction
+			transactions.splice(transactionIndex, 1);
+			deletedCount++;
+			
+			if (transactionDate) {
+				deletedDates.add(transactionDate);
+			}
+		}
+	}
+	
+	// Update streak history for affected dates
+	for (const date of deletedDates) {
+		const hasOtherTransactions = transactions.some(
+			t => t.userId === userId && 
+			     t.transactionDate.split('T')[0] === date
+		);
+		
+		if (!hasOtherTransactions) {
+			const historyIndex = streakHistory.findIndex(
+				h => h.userId === userId && h.date === date
+			);
+			
+			if (historyIndex >= 0) {
+				const activityType = streakHistory[historyIndex].activityType;
+				
+				// Only mark as inactive if it was a transaction (not freeze)
+				if (activityType === 'transaction') {
+					streakHistory[historyIndex].hasActivity = false;
+				}
+			}
+		}
+	}
+	
+	// Recalculate streak once after all deletions
+	if (deletedDates.size > 0) {
+		await this.recalculateStreak(userId);
+	}
+	
+	return { 
+		success: true, 
+		message: `Đã xóa ${deletedCount} giao dịch và cập nhật streak`,
+		deletedCount 
+	};
 	},
 
 	async createTransaction(userId: number, data: {
@@ -759,6 +976,35 @@ export const fakeApi = {
 		if (wallet) {
 			wallet.amount += (data.type === 1 ? data.amount : -data.amount);
 		}
+	
+	// Update streak activity
+	const transactionDate = transaction.transactionDate.split('T')[0];
+	const today = new Date().toISOString().split('T')[0];
+	
+	// Only record streak if transaction is for today (or past dates shouldn't affect today's streak)
+	if (transactionDate === today) {
+		await this.recordStreakActivity(userId, 'transaction');
+	} else {
+		// For past/future dates, just update history without affecting current streak
+		let history = streakHistory.find(h => h.userId === userId && h.date === transactionDate);
+		if (!history) {
+			history = {
+				id: Math.max(...streakHistory.map(h => h.id), 0) + 1,
+				userId,
+				date: transactionDate,
+				hasActivity: true,
+				activityType: 'transaction',
+				createdAt: new Date().toISOString()
+			};
+			streakHistory.push(history);
+		} else {
+			history.hasActivity = true;
+			history.activityType = 'transaction';
+		}
+		
+		// Recalculate streak to update based on new historical data
+		await this.recalculateStreak(userId);
+	}
 		
 		return { success: true, transaction };
 	},
@@ -773,15 +1019,34 @@ export const fakeApi = {
 		return { success: true, wallet };
 	},
 
-	async updateWallet(userId: number, walletId: number, data: { name?: string, color?: string }) {
+	async updateWallet(userId: number, walletId: number, updates: {name?: string, currency?: string, color?: string}) {
 		await delay(300);
 		const wallet = wallets.find(w => w.id === walletId && w.userId === userId);
 		if (!wallet) {
 			return { success: false, message: 'Ví không tồn tại' };
 		}
 		
-		if (data.name !== undefined) wallet.name = data.name;
-		if (data.color !== undefined) wallet.color = data.color;
+		// Check if new name already exists for another wallet
+		if (updates.name && updates.name.trim() !== wallet.name) {
+			const nameExists = wallets.some(w => 
+				w.userId === userId && 
+				w.id !== walletId && 
+				w.name.trim().toLowerCase() === updates.name!.trim().toLowerCase()
+			);
+			if (nameExists) {
+				return { success: false, message: 'Tên ví đã tồn tại' };
+			}
+		}
+
+		if (updates.name !== undefined) {
+			wallet.name = updates.name.trim();
+		}
+		if (updates.currency !== undefined) {
+			wallet.currency = updates.currency;
+		}
+		if (updates.color !== undefined) {
+			wallet.color = updates.color;
+		}
 		
 		return { success: true, wallet };
 	},
@@ -794,6 +1059,47 @@ export const fakeApi = {
 		// also move current wallet to this
 		currentWalletByUser[userId] = walletId;
 		return { success: true };
+	},
+
+	async transferBetweenWallets(userId: number, fromWalletId: number, toWalletId: number, amount: number, note?: string) {
+		await delay(400);
+		
+		const fromWallet = wallets.find(w => w.id === fromWalletId && w.userId === userId);
+		const toWallet = wallets.find(w => w.id === toWalletId && w.userId === userId);
+
+		if (!fromWallet) {
+			return { success: false, message: 'Ví nguồn không tồn tại' };
+		}
+		if (!toWallet) {
+			return { success: false, message: 'Ví đích không tồn tại' };
+		}
+		if (fromWalletId === toWalletId) {
+			return { success: false, message: 'Không thể chuyển tiền cho cùng một ví' };
+		}
+		if (fromWallet.currency !== toWallet.currency) {
+			return { success: false, message: `Không thể chuyển tiền giữa các ví khác đơn vị tiền tệ (${fromWallet.currency} → ${toWallet.currency})` };
+		}
+		if (amount <= 0) {
+			return { success: false, message: 'Số tiền phải lớn hơn 0' };
+		}
+		if (fromWallet.amount < amount) {
+			return { success: false, message: 'Số dư ví nguồn không đủ' };
+		}
+
+		// Update wallet balances
+		fromWallet.amount -= amount;
+		toWallet.amount += amount;
+
+		// Create transfer record (optional - could be tracked in transactions)
+		const transferNote = note || `Chuyển tiền từ ${fromWallet.name} sang ${toWallet.name}`;
+
+		return { 
+			success: true, 
+			message: 'Chuyển tiền thành công',
+			fromWallet,
+			toWallet,
+			transferNote
+		};
 	},
 
 	async deleteWallet(userId: number, walletId: number) {
@@ -1839,6 +2145,988 @@ export const fakeApi = {
 			}
 		};
 	},
+
+	// ============ NOTIFICATION ENDPOINTS ============
+
+	// Get notifications for user
+	async getNotifications(userId: number, page: number = 1, limit: number = 20) {
+		await delay(300);
+		
+		const userNotifications = notifications
+			.filter(n => n.userId === userId)
+			.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+		
+		const startIndex = (page - 1) * limit;
+		const endIndex = startIndex + limit;
+		const paginatedNotifications = userNotifications.slice(startIndex, endIndex);
+		
+		return {
+			success: true,
+			data: {
+				notifications: paginatedNotifications,
+				total: userNotifications.length,
+				unreadCount: userNotifications.filter(n => !n.isRead).length,
+				page,
+				limit,
+				hasMore: endIndex < userNotifications.length
+			}
+		};
+	},
+
+	// Mark notification as read
+	async markNotificationAsRead(userId: number, notificationId: number) {
+		await delay(200);
+		
+		const notification = notifications.find(n => n.id === notificationId && n.userId === userId);
+		if (!notification) {
+			return { success: false, error: 'Notification not found' };
+		}
+		
+		notification.isRead = true;
+		return { success: true, data: notification };
+	},
+
+	// Mark all notifications as read
+	async markAllNotificationsAsRead(userId: number) {
+		await delay(300);
+		
+		const userNotifications = notifications.filter(n => n.userId === userId && !n.isRead);
+		userNotifications.forEach(n => n.isRead = true);
+		
+		return { 
+			success: true, 
+			data: { 
+				markedCount: userNotifications.length 
+			} 
+		};
+	},
+
+	// Delete notification
+	async deleteNotification(userId: number, notificationId: number) {
+		await delay(200);
+		
+		const index = notifications.findIndex(n => n.id === notificationId && n.userId === userId);
+		if (index === -1) {
+			return { success: false, error: 'Notification not found' };
+		}
+		
+		const deletedNotification = notifications.splice(index, 1)[0];
+		return { success: true, data: deletedNotification };
+	},
+
+	// Create notification
+	async createNotification(userId: number, type: string, title: string, message: string, data?: any, scheduledFor?: string) {
+		await delay(200);
+		
+		const newNotification = {
+			id: Math.max(...notifications.map(n => n.id), 0) + 1,
+			userId,
+			type,
+			title,
+			message,
+			data: data || undefined,
+			isRead: false,
+			createdAt: new Date().toISOString(),
+			scheduledFor: scheduledFor || undefined
+		};
+		
+		notifications.unshift(newNotification);
+		return { success: true, data: newNotification };
+	},
+
+	// Get notification settings
+	async getNotificationSettings(userId: number) {
+		await delay(200);
+		
+		let settings = notificationSettings.find(s => s.userId === userId);
+		if (!settings) {
+			// Create default settings
+			settings = {
+				userId,
+				budgetAlerts: true,
+				transactionReminders: true,
+				weeklyReports: true,
+				securityAlerts: true,
+				pushEnabled: true,
+				quietHoursEnabled: false,
+				quietHoursStart: '22:00',
+				quietHoursEnd: '08:00',
+				updatedAt: new Date().toISOString()
+			};
+			notificationSettings.push(settings);
+		}
+		
+		return { success: true, data: settings };
+	},
+
+	// Update notification settings
+	async updateNotificationSettings(userId: number, newSettings: Partial<{
+		budgetAlerts: boolean;
+		transactionReminders: boolean;
+		weeklyReports: boolean;
+		securityAlerts: boolean;
+		pushEnabled: boolean;
+		quietHoursEnabled: boolean;
+		quietHoursStart: string;
+		quietHoursEnd: string;
+	}>) {
+		await delay(300);
+		
+		let settings = notificationSettings.find(s => s.userId === userId);
+		if (!settings) {
+			settings = {
+				userId,
+				budgetAlerts: true,
+				transactionReminders: true,
+				weeklyReports: true,
+				securityAlerts: true,
+				pushEnabled: true,
+				quietHoursEnabled: false,
+				quietHoursStart: '22:00',
+				quietHoursEnd: '08:00',
+				updatedAt: new Date().toISOString()
+			};
+			notificationSettings.push(settings);
+		}
+		
+		Object.assign(settings, newSettings, { updatedAt: new Date().toISOString() });
+		return { success: true, data: settings };
+	},
+
+	// Check and create budget alerts
+	async checkBudgetAlerts(userId: number) {
+		await delay(400);
+		
+		const userBudgets = budgets.filter(b => b.userId === userId);
+		const alerts = [];
+		
+		for (const budget of userBudgets) {
+			const budgetTransactions = transactions.filter(t => 
+				t.userId === userId && 
+				t.userCategoryId === budget.userCategoryId &&
+				t.walletId === budget.walletId &&
+				t.transactionDate >= budget.startDate &&
+				t.transactionDate <= budget.endDate &&
+				t.type === 2 // expenses only
+			);
+			
+			const spent = budgetTransactions.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+			const percentage = (spent / budget.amount) * 100;
+			
+			// Budget exceeded
+			if (spent > budget.amount) {
+				const exceeded = spent - budget.amount;
+				const category = userCategories.find(c => c.id === budget.userCategoryId);
+				
+				alerts.push({
+					type: 'budget_exceeded',
+					title: '🚨 Vượt ngân sách!',
+					message: `Bạn đã chi ${spent.toLocaleString('vi-VN')}₫ vượt quá ngân sách ${category?.name || 'Khác'} (${budget.amount.toLocaleString('vi-VN')}₫)`,
+					data: {
+						budgetId: budget.id,
+						budgetName: category?.name || 'Khác',
+						currentSpent: spent,
+						budgetAmount: budget.amount,
+						exceeded
+					}
+				});
+			}
+			// Budget warning (80% threshold)
+			else if (percentage >= 80) {
+				const remaining = budget.amount - spent;
+				const category = userCategories.find(c => c.id === budget.userCategoryId);
+				
+				alerts.push({
+					type: 'budget_warning',
+					title: '⚡ Sắp hết ngân sách',
+					message: `Bạn đã sử dụng ${Math.round(percentage)}% ngân sách ${category?.name || 'Khác'}. Còn lại ${remaining.toLocaleString('vi-VN')}₫`,
+					data: {
+						budgetId: budget.id,
+						budgetName: category?.name || 'Khác',
+						percentage: Math.round(percentage),
+						remaining,
+						budgetAmount: budget.amount
+					}
+				});
+			}
+		}
+		
+		// Create notifications for alerts
+		for (const alert of alerts) {
+			// Check if similar notification already exists (within last 24 hours)
+			const existingNotification = notifications.find(n => 
+				n.userId === userId &&
+				n.type === alert.type &&
+				n.data?.budgetId === alert.data.budgetId &&
+				new Date(n.createdAt).getTime() > Date.now() - 24 * 60 * 60 * 1000
+			);
+			
+			if (!existingNotification) {
+				await this.createNotification(userId, alert.type, alert.title, alert.message, alert.data);
+			}
+		}
+		
+		return { success: true, data: { alertsCreated: alerts.length } };
+	},
+
+	// Check for large transactions and create notifications
+	async checkLargeTransactionAlerts(userId: number) {
+		await delay(300);
+		
+		const oneWeekAgo = new Date();
+		oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+		
+		const recentTransactions = transactions.filter(t => 
+			t.userId === userId &&
+			new Date(t.transactionDate) >= oneWeekAgo &&
+			t.type === 2 // expenses only
+		);
+		
+		if (recentTransactions.length === 0) return { success: true, data: { alertsCreated: 0 } };
+		
+		// Find the largest transaction this week
+		const largestTransaction = recentTransactions.reduce((max, current) => 
+			Math.abs(current.amount) > Math.abs(max.amount) ? current : max
+		);
+		
+		const category = userCategories.find(c => c.id === largestTransaction.userCategoryId);
+		const amount = Math.abs(largestTransaction.amount);
+		
+		// Only create alert if transaction is > 200,000 VND
+		if (amount > 200000) {
+			// Check if notification for this transaction already exists
+			const existingNotification = notifications.find(n => 
+				n.userId === userId &&
+				n.type === 'large_transaction' &&
+				n.data?.transactionId === largestTransaction.id
+			);
+			
+			if (!existingNotification) {
+				await this.createNotification(
+					userId,
+					'large_transaction',
+					'💸 Giao dịch lớn',
+					`Bạn vừa chi ${amount.toLocaleString('vi-VN')}₫ cho ${category?.name || 'Khác'}. Đây là giao dịch lớn nhất tuần này.`,
+					{
+						transactionId: largestTransaction.id,
+						amount,
+						category: category?.name || 'Khác'
+					}
+				);
+				
+				return { success: true, data: { alertsCreated: 1 } };
+			}
+		}
+		
+		return { success: true, data: { alertsCreated: 0 } };
+	},
+
+	// Generate weekly report notification
+	async generateWeeklyReport(userId: number) {
+		await delay(500);
+		
+		const now = new Date();
+		const oneWeekAgo = new Date();
+		oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+		const twoWeeksAgo = new Date();
+		twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+		
+		// Current week transactions
+		const currentWeekTx = transactions.filter(t => 
+			t.userId === userId &&
+			new Date(t.transactionDate) >= oneWeekAgo &&
+			new Date(t.transactionDate) <= now &&
+			t.type === 2
+		);
+		
+		// Previous week transactions
+		const previousWeekTx = transactions.filter(t => 
+			t.userId === userId &&
+			new Date(t.transactionDate) >= twoWeeksAgo &&
+			new Date(t.transactionDate) < oneWeekAgo &&
+			t.type === 2
+		);
+		
+		const currentWeekSpent = currentWeekTx.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+		const previousWeekSpent = previousWeekTx.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+		const saved = previousWeekSpent - currentWeekSpent;
+		
+		let title, message;
+		if (saved > 0) {
+			title = '📊 Báo cáo tuần - Tuyệt vời!';
+			message = `Tuần này bạn đã tiết kiệm được ${saved.toLocaleString('vi-VN')}₫ so với tuần trước. Tuyệt vời! 🎉`;
+		} else if (saved < 0) {
+			title = '📊 Báo cáo tuần - Cần cải thiện';
+			message = `Tuần này bạn đã chi nhiều hơn ${Math.abs(saved).toLocaleString('vi-VN')}₫ so với tuần trước. Hãy cẩn thận hơn! 💪`;
+		} else {
+			title = '📊 Báo cáo tuần';
+			message = `Tuần này bạn đã chi tiêu tương tự tuần trước: ${currentWeekSpent.toLocaleString('vi-VN')}₫`;
+		}
+		
+		// Check if weekly report already exists for this week
+		const weekStart = new Date(oneWeekAgo);
+		weekStart.setHours(0, 0, 0, 0);
+		const existingReport = notifications.find(n => 
+			n.userId === userId &&
+			n.type === 'weekly_report' &&
+			new Date(n.createdAt) >= weekStart
+		);
+		
+		if (!existingReport) {
+			await this.createNotification(
+				userId,
+				'weekly_report',
+				title,
+				message,
+				{
+					weeklySpent: currentWeekSpent,
+					previousWeek: previousWeekSpent,
+					saved,
+					period: `Tuần ${Math.ceil(now.getDate() / 7)}/${now.getFullYear()}`
+				}
+			);
+			
+			return { success: true, data: { reportCreated: true } };
+		}
+		
+		return { success: true, data: { reportCreated: false } };
+	},
+
+	// ============ STREAK ENDPOINTS ============
+
+	// Get user streak data
+	async getStreakData(userId: number) {
+		await delay(200);
+		
+		let userStreak = streaks.find(s => s.userId === userId);
+		let userSettings = streakSettings.find(s => s.userId === userId);
+		
+		if (!userStreak) {
+			// Initialize streak for new user
+			userStreak = {
+				id: Math.max(...streaks.map(s => s.id), 0) + 1,
+				userId,
+				streakDays: 0,
+				lastTransactionDate: new Date().toISOString(),
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString()
+			};
+			streaks.push(userStreak);
+		}
+		
+		if (!userSettings) {
+			// Initialize settings for new user
+			userSettings = {
+				id: Math.max(...streakSettings.map(s => s.id), 0) + 1,
+				userId,
+				dailyReminderEnabled: true,
+				reminderTime: '20:00',
+				weekendMode: false,
+				freezeAvailable: 1,
+				freezeUsedThisWeek: 0,
+				bestStreak: 0,
+				totalActiveDays: 0,
+				createdAt: new Date().toISOString(),
+				updatedAt: new Date().toISOString()
+			};
+			streakSettings.push(userSettings);
+		}
+		
+		// Get recent history (last 7 days)
+		const today = new Date();
+		const last7Days = [];
+		for (let i = 6; i >= 0; i--) {
+			const date = new Date(today);
+			date.setDate(date.getDate() - i);
+			const dateStr = date.toISOString().split('T')[0];
+			
+			const dayHistory = streakHistory.find(h => h.userId === userId && h.date === dateStr);
+			last7Days.push({
+				date: dateStr,
+				hasActivity: dayHistory?.hasActivity || false,
+				activityType: dayHistory?.activityType || null,
+				isToday: i === 0
+			});
+		}
+		
+		return {
+			success: true,
+			data: {
+				streak: userStreak,
+				settings: userSettings,
+				last7Days,
+				todayCompleted: last7Days[6]?.hasActivity || false
+			}
+		};
+	},
+
+	// Record streak activity
+	async recordStreakActivity(userId: number, activityType: string) {
+		await delay(200);
+		
+		const today = new Date().toISOString().split('T')[0];
+		const now = new Date().toISOString();
+		
+		// Check if already recorded today
+		let todayHistory = streakHistory.find(h => h.userId === userId && h.date === today);
+		
+		if (!todayHistory) {
+			// First activity of the day
+			todayHistory = {
+				id: Math.max(...streakHistory.map(h => h.id), 0) + 1,
+				userId,
+				date: today,
+				hasActivity: true,
+				activityType,
+				createdAt: now
+			};
+			streakHistory.push(todayHistory);
+			
+			// Update streak
+			let userStreak = streaks.find(s => s.userId === userId);
+			let userSettings = streakSettings.find(s => s.userId === userId);
+			
+		if (userStreak && userSettings) {
+			const lastDate = (userStreak.last_transaction_date || userStreak.lastTransactionDate || '').split('T')[0];
+			const daysDiff = this.getDaysDifference(lastDate, today);
+				
+				// Get current streak value (support both cases)
+				const currentStreak = userStreak.streak_days || userStreak.streakDays || 0;
+				const currentBest = userSettings.best_streak || userSettings.bestStreak || 0;
+				const weekendMode = userSettings.weekend_mode || userSettings.weekendMode || false;
+				
+				let previousStreak = currentStreak;
+				let streakIncreased = false;
+				
+			if (daysDiff === 1) {
+				// Consecutive day
+				userStreak.streak_days = currentStreak + 1;
+				streakIncreased = true;
+			} else if (daysDiff === 2) {
+				// 1 day gap - check if freeze or grace period
+				const yesterday = new Date(today);
+				yesterday.setDate(yesterday.getDate() - 1);
+				const yesterdayStr = yesterday.toISOString().split('T')[0];
+				
+				const yesterdayHistory = streakHistory.find(
+					h => h.userId === userId && h.date === yesterdayStr
+				);
+				
+			const wasFreeze = yesterdayHistory?.activityType === 'freeze';
+			const hadActivity = yesterdayHistory?.hasActivity;
+				
+				if (wasFreeze || hadActivity) {
+					// Freeze or activity yesterday - continue streak
+					userStreak.streak_days = currentStreak + 1;
+					streakIncreased = true;
+				} else if (!weekendMode) {
+					// Grace period (1 day off allowed)
+					userStreak.streak_days = currentStreak + 1;
+					streakIncreased = true;
+				} else {
+					// Weekend mode + no activity/freeze - reset
+					if (currentStreak > currentBest) {
+						userSettings.best_streak = currentStreak;
+					}
+					this.createStreakNotification(userId, 'streak_lost', currentStreak);
+					userStreak.streak_days = 1;
+				}
+			} else if (daysDiff === 3) {
+				// 2 day gap - check if freeze protected previous day
+				const twoDaysAgo = new Date(today);
+				twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+				const twoDaysAgoStr = twoDaysAgo.toISOString().split('T')[0];
+				
+			const twoDaysAgoHistory = streakHistory.find(
+				h => h.userId === userId && h.date === twoDaysAgoStr
+			);
+			
+			const wasFreeze = twoDaysAgoHistory?.activityType === 'freeze';
+				
+				if (wasFreeze) {
+					// Freeze 2 days ago + 1 day grace = OK, continue streak
+					userStreak.streak_days = currentStreak + 1;
+					streakIncreased = true;
+				} else {
+					// Streak broken - too many days without activity
+					if (currentStreak > currentBest) {
+						userSettings.best_streak = currentStreak;
+					}
+					this.createStreakNotification(userId, 'streak_lost', currentStreak);
+					userStreak.streak_days = 1;
+				}
+			} else if (daysDiff > 3) {
+				// Streak broken - save best streak and restart
+				if (currentStreak > currentBest) {
+					userSettings.best_streak = currentStreak;
+				}
+				// Generate lost notification
+				this.createStreakNotification(userId, 'streak_lost', currentStreak);
+				userStreak.streak_days = 1;
+				} else if (daysDiff === 0) {
+					// Same day - no change to streak
+				} else {
+					// First day or restart
+					userStreak.streak_days = 1;
+				}
+				
+				// Check for milestone
+				const newStreak = userStreak.streak_days || 0;
+				const milestones = [7, 14, 30, 60, 100, 365];
+				if (streakIncreased && milestones.includes(newStreak)) {
+					// Generate milestone notification
+					this.createStreakNotification(userId, 'streak_milestone', newStreak);
+				}
+				
+				userStreak.last_transaction_date = now;
+				userStreak.updated_at = now;
+				const totalActive = userSettings.total_active_days || userSettings.totalActiveDays || 0;
+				userSettings.total_active_days = totalActive + 1;
+				userSettings.updated_at = now;
+				
+				// Reset weekly freeze counter on Monday
+				const dayOfWeek = new Date().getDay();
+				if (dayOfWeek === 1) {
+					const freezeUsed = userSettings.freeze_used_this_week || userSettings.freezeUsedThisWeek || 0;
+					if (freezeUsed > 0) {
+						// Generate freeze reset notification
+						this.createStreakNotification(userId, 'streak_freeze_reset', 0);
+					}
+					userSettings.freeze_used_this_week = 0;
+				}
+			}
+		}
+		
+		return { success: true, data: { activityRecorded: true, todayHistory } };
+	},
+
+	// Use streak freeze
+async useStreakFreeze(userId: number) {
+	await delay(200);
+	
+	let userSettings = streakSettings.find(s => s.userId === userId);
+	
+	
+	if (!userSettings) {
+		return { success: false, error: 'User settings not found' };
+	}
+		
+		const freezeUsed = userSettings.freeze_used_this_week || userSettings.freezeUsedThisWeek || 0;
+		const freezeAvailable = userSettings.freeze_available || userSettings.freezeAvailable || 0;
+		
+		if (freezeUsed >= freezeAvailable) {
+			return { success: false, error: 'No freezes available this week' };
+		}
+		
+		const today = new Date().toISOString().split('T')[0];
+		const todayHistory = streakHistory.find(h => h.userId === userId && h.date === today);
+		
+		if (todayHistory && todayHistory.hasActivity) {
+			return { success: false, error: 'Already completed today' };
+		}
+		
+		// Apply freeze
+		const freezeHistory = {
+			id: Math.max(...streakHistory.map(h => h.id), 0) + 1,
+			userId,
+			date: today,
+			hasActivity: true,
+			activityType: 'freeze',
+			createdAt: new Date().toISOString()
+		};
+		
+	if (todayHistory) {
+		Object.assign(todayHistory, freezeHistory);
+	} else {
+		streakHistory.push(freezeHistory);
+	}
+	
+	// Update settings to persist changes
+	let realSettings = streakSettings.find(s => s.userId === userId);
+	if (!realSettings) {
+		// Create new settings if not exists
+		realSettings = {
+			id: Math.max(...streakSettings.map(s => s.id || 0), 0) + 1,
+			userId,
+			dailyReminderEnabled: userSettings.daily_reminder_enabled || userSettings.dailyReminderEnabled || false,
+			reminderTime: userSettings.reminder_time || userSettings.reminderTime || '20:00',
+			weekendMode: userSettings.weekend_mode || userSettings.weekendMode || false,
+			freezeAvailable: userSettings.freeze_available || userSettings.freezeAvailable || 1,
+			freezeUsedThisWeek: 0,
+			bestStreak: userSettings.best_streak || userSettings.bestStreak || 0,
+			totalActiveDays: userSettings.total_active_days || userSettings.totalActiveDays || 0,
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString()
+		};
+		streakSettings.push(realSettings);
+	}
+	
+	realSettings.freezeUsedThisWeek = (realSettings.freezeUsedThisWeek || 0) + 1;
+	realSettings.updatedAt = new Date().toISOString();
+
+return { success: true, data: { freezeUsed: true } };
+},
+
+// Recalculate streak from scratch based on history
+async recalculateStreak(userId: number) {
+	await delay(200);
+	
+	// Get all history sorted by date
+	const userHistory = streakHistory
+		.filter(h => h.userId === userId)
+		.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+	
+	let currentStreak = 0;
+	let bestStreak = 0;
+	let lastDate: string | null = null;
+	let totalActiveDays = 0;
+	
+	for (const h of userHistory) {
+		const hasActivity = h.hasActivity;
+		
+		if (hasActivity) {
+			totalActiveDays++;
+			
+			if (!lastDate) {
+				// First activity
+				currentStreak = 1;
+			} else {
+				const daysDiff = this.getDaysDifference(lastDate, h.date);
+				
+				if (daysDiff === 1) {
+					// Consecutive day
+					currentStreak++;
+				} else if (daysDiff === 2) {
+					// 1 day gap - check if freeze or grace period
+					const previousDay = new Date(h.date);
+					previousDay.setDate(previousDay.getDate() - 1);
+					const previousDayStr = previousDay.toISOString().split('T')[0];
+					
+				const previousHistory = userHistory.find(prev => prev.date === previousDayStr);
+				const wasFreeze = previousHistory?.activityType === 'freeze';
+					
+					if (wasFreeze) {
+						// Freeze protects - continue streak
+						currentStreak++;
+					} else {
+						// Grace period (1 day gap allowed)
+						currentStreak++;
+					}
+				} else if (daysDiff === 3) {
+					// 2 day gap - check if freeze on day before
+					const twoDaysAgo = new Date(h.date);
+					twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+					const twoDaysAgoStr = twoDaysAgo.toISOString().split('T')[0];
+					
+				const twoDaysAgoHistory = userHistory.find(prev => prev.date === twoDaysAgoStr);
+				const wasFreeze = twoDaysAgoHistory?.activityType === 'freeze';
+					
+					if (wasFreeze) {
+						// Freeze + grace period = continue
+						currentStreak++;
+					} else {
+						// Gap too large - reset
+						bestStreak = Math.max(bestStreak, currentStreak);
+						currentStreak = 1;
+					}
+				} else {
+					// More than 2 day gap - reset
+					bestStreak = Math.max(bestStreak, currentStreak);
+					currentStreak = 1;
+				}
+			}
+			
+			lastDate = h.date;
+		}
+	}
+	
+	bestStreak = Math.max(bestStreak, currentStreak);
+	
+	// Update streak data
+	const userStreak = streaks.find(s => s.userId === userId);
+	const userSettings = streakSettings.find(s => s.userId === userId);
+	
+	if (userStreak && userSettings) {
+		userStreak.streak_days = currentStreak;
+		userStreak.streakDays = currentStreak; // Support both
+		userStreak.updated_at = new Date().toISOString();
+		userStreak.updatedAt = new Date().toISOString();
+		
+		const currentBest = userSettings.best_streak || userSettings.bestStreak || 0;
+		userSettings.best_streak = Math.max(currentBest, bestStreak);
+		userSettings.bestStreak = Math.max(currentBest, bestStreak);
+		userSettings.total_active_days = totalActiveDays;
+		userSettings.totalActiveDays = totalActiveDays;
+		userSettings.updated_at = new Date().toISOString();
+		userSettings.updatedAt = new Date().toISOString();
+	}
+	
+	return { 
+		success: true, 
+		data: { 
+			currentStreak, 
+			bestStreak, 
+			totalActiveDays 
+		} 
+	};
+},
+
+// Get streak statistics
+	async getStreakStats(userId: number) {
+		await delay(200);
+		
+		let userStreak = streaks.find(s => s.userId === userId);
+		let userSettings = streakSettings.find(s => s.userId === userId);
+		let userHistory = streakHistory.filter(h => h.userId === userId);
+		
+		
+		if (!userStreak || !userSettings) {
+			return { success: false, error: 'Streak data not found' };
+		}
+		
+	// Calculate completion rate (support both snake_case and camelCase)
+	const totalDays = userHistory.length;
+	const activeDays = userHistory.filter((h: any) => h.has_activity || h.hasActivity).length;
+	const completionRate = totalDays > 0 ? Math.round((activeDays / totalDays) * 100) : 0;
+	
+	// Activity type breakdown
+	const activityBreakdown = userHistory.reduce((acc: any, h: any) => {
+		const hasActivity = h.has_activity || h.hasActivity;
+		const activityType = h.activity_type || h.activityType;
+		if (hasActivity && activityType) {
+			acc[activityType] = (acc[activityType] || 0) + 1;
+		}
+		return acc;
+	}, {} as Record<string, number>);
+		
+	return {
+		success: true,
+		data: {
+			currentStreak: userStreak.streak_days || userStreak.streakDays || 0,
+			bestStreak: userSettings.best_streak || userSettings.bestStreak || 0,
+			totalActiveDays: userSettings.total_active_days || userSettings.totalActiveDays || 0,
+			completionRate,
+			freezesLeft: (userSettings.freeze_available || userSettings.freezeAvailable || 0) - (userSettings.freeze_used_this_week || userSettings.freezeUsedThisWeek || 0),
+			activityBreakdown,
+			streakStartDate: userStreak.created_at || userStreak.createdAt
+		}
+	};
+	},
+
+	// Get full streak history (all days since registration)
+	async getFullStreakHistory(userId: number) {
+		await delay(200);
+		
+		let userHistory = streakHistory.filter(h => h.userId === userId);
+		
+		// Sort by date descending
+		const sortedHistory = userHistory.sort((a: any, b: any) => {
+			const dateA = new Date(a.date).getTime();
+			const dateB = new Date(b.date).getTime();
+			return dateB - dateA;
+		});
+		
+		// Format for calendar
+		const formattedHistory = sortedHistory.map((h: any) => ({
+			date: h.date,
+			hasActivity: h.has_activity || h.hasActivity || false,
+			activityType: h.activity_type || h.activityType || null
+		}));
+		
+		return {
+			success: true,
+			data: formattedHistory
+		};
+	},
+
+	// Update streak settings
+	async updateStreakSettings(userId: number, newSettings: Partial<{
+		dailyReminderEnabled: boolean;
+		reminderTime: string;
+		weekendMode: boolean;
+	}>) {
+		await delay(200);
+		
+		let userSettings = streakSettings.find(s => s.userId === userId);
+		if (!userSettings) {
+			return { success: false, error: 'Settings not found' };
+		}
+		
+	Object.assign(userSettings, newSettings, { updatedAt: new Date().toISOString() });
+	return { success: true, data: userSettings };
+},
+
+// Reset streak manually
+async resetStreak(userId: number) {
+	await delay(200);
+	
+	const userStreak = streaks.find(s => s.userId === userId);
+	const userSettings = streakSettings.find(s => s.userId === userId);
+	
+	if (!userStreak || !userSettings) {
+		return { success: false, error: 'User not found' };
+	}
+	
+	// Save best streak if current is better
+	const currentStreak = userStreak.streak_days || userStreak.streakDays || 0;
+	const currentBest = userSettings.best_streak || userSettings.bestStreak || 0;
+	
+	if (currentStreak > currentBest) {
+		userSettings.best_streak = currentStreak;
+		userSettings.bestStreak = currentStreak;
+	}
+	
+	// Reset streak to 0
+	userStreak.streak_days = 0;
+	userStreak.streakDays = 0;
+	userStreak.updated_at = new Date().toISOString();
+	userStreak.updatedAt = new Date().toISOString();
+	
+	userSettings.updated_at = new Date().toISOString();
+	userSettings.updatedAt = new Date().toISOString();
+	
+	// Create notification
+	this.createStreakNotification(userId, 'streak_lost', currentStreak);
+	
+	return { 
+		success: true, 
+		message: 'Streak đã được reset về 0. Best streak đã được lưu.',
+		data: {
+			previousStreak: currentStreak,
+			bestStreak: Math.max(currentStreak, currentBest)
+		}
+	};
+},
+
+// Helper method for date difference calculation
+	getDaysDifference(date1: string, date2: string): number {
+		const d1 = new Date(date1);
+		const d2 = new Date(date2);
+		const diffTime = d2.getTime() - d1.getTime();
+		return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+	},
+
+	// Create streak notification helper
+	createStreakNotification(
+		userId: number, 
+		type: 'streak_warning' | 'streak_lost' | 'streak_milestone' | 'streak_reminder' | 'streak_freeze_reset',
+		streakValue: number
+	) {
+		try {
+			const notificationMap = {
+				streak_warning: {
+					title: 'Cảnh báo Streak!',
+					message: `Chuỗi ${streakValue} ngày của bạn sắp bị mất! Hãy ghi giao dịch hoặc check-in hôm nay.`,
+				},
+				streak_lost: {
+					title: 'Streak đã kết thúc',
+					message: `Chuỗi ${streakValue} ngày của bạn đã kết thúc. Đừng lo, bạn có thể bắt đầu lại ngay hôm nay!`,
+				},
+				streak_milestone: {
+					title: `Chúc mừng! ${streakValue} ngày liên tục!`,
+					message: `Bạn đã đạt mốc ${streakValue} ngày! Thành tựu mới đã được mở khóa.`,
+				},
+				streak_reminder: {
+					title: 'Nhắc nhở Streak',
+					message: `Đã ghi lại chi tiêu hôm nay chưa? Streak hiện tại: ${streakValue} ngày`,
+				},
+				streak_freeze_reset: {
+					title: 'Freeze đã được reset!',
+					message: 'Tuần mới bắt đầu! Bạn có thêm 1 freeze để sử dụng trong tuần này.',
+				}
+			};
+
+			const notification = notificationMap[type];
+			if (!notification) return;
+
+			this.createNotification(
+				userId,
+				type,
+				notification.title,
+				notification.message,
+				{ streakValue, action: 'open_streak' }
+			);
+		} catch (error) {
+			// Silently fail notification creation
+		}
+	},
+
+	// Check and send daily reminder (called by scheduler or manually)
+	async checkDailyReminders() {
+		await delay(200);
+		
+		try {
+			const now = new Date();
+			const currentHour = now.getHours();
+			const currentMinute = now.getMinutes();
+
+			for (const settings of streakSettings) {
+				const userId = settings.userId;
+				const reminderEnabled = settings.daily_reminder_enabled || settings.dailyReminderEnabled;
+				const reminderTime = settings.reminder_time || settings.reminderTime || '20:00';
+
+				if (!reminderEnabled) continue;
+
+				const [reminderHour, reminderMinute] = reminderTime.split(':').map(Number);
+
+				// Check if within 5 minutes of reminder time
+				if (Math.abs(currentHour - reminderHour) === 0 && 
+					Math.abs(currentMinute - reminderMinute) <= 5) {
+					
+					// Check if user already completed today
+					const today = new Date().toISOString().split('T')[0];
+					const todayHistory = streakHistory.find(h => 
+						(h.userId === userId) && h.date === today && h.hasActivity
+					);
+
+					if (!todayHistory) {
+						// Send reminder
+						const userStreak = streaks.find(s => s.userId === userId);
+						const currentStreak = userStreak?.streak_days || userStreak?.streakDays || 0;
+						this.createStreakNotification(userId, 'streak_reminder', currentStreak);
+					}
+				}
+			}
+
+			return { success: true, data: { remindersChecked: true } };
+		} catch (error) {
+			console.error('Error checking daily reminders:', error);
+			return { success: false, error: 'Failed to check reminders' };
+		}
+	},
+
+	// Check for warning state and send notifications
+	async checkStreakWarnings() {
+		await delay(200);
+
+		try {
+			const today = new Date().toISOString().split('T')[0];
+			const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+
+			for (const userStreak of streaks) {
+				const userId = userStreak.userId;
+				const lastDate = (userStreak.last_transaction_date || userStreak.lastTransactionDate || '').split('T')[0];
+				const currentStreak = userStreak.streak_days || userStreak.streakDays || 0;
+
+				// Check if last activity was yesterday
+				if (lastDate === yesterday && currentStreak > 0) {
+					// Check if already completed today
+					const todayHistory = streakHistory.find(h => 
+						(h.userId === userId) && h.date === today && h.hasActivity
+					);
+
+					if (!todayHistory) {
+						// User is in warning state - send notification
+						this.createStreakNotification(userId, 'streak_warning', currentStreak);
+					}
+				}
+			}
+
+			return { success: true, data: { warningsChecked: true } };
+		} catch (error) {
+			return { success: false, error: 'Failed to check warnings' };
+		}
+	}
 };
 
 
