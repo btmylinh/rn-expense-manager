@@ -12,14 +12,21 @@ import { useAppTheme } from '../theme';
 import BudgetCreateScreen from '../screens/budgets/BudgetCreateScreen';
 import BudgetDetailScreen from '../screens/budgets/BudgetDetailScreen';
 import BudgetHistoryScreen from '../screens/budgets/BudgetHistoryScreen';
+import BudgetsScreen from '../screens/budgets/BudgetsScreen';
 import TransactionListScreen from '../screens/transactions/TransactionListScreen';
 import NotificationScreen from '../screens/notifications/NotificationScreen';
 import StreakDetailScreen from '../screens/streak/StreakDetailScreen';
 import StreakSettingsScreen from '../screens/streak/StreakSettingsScreen';
+import SavingsGoalCreateScreen from '../screens/savings/SavingsGoalCreateScreen';
+import SavingsGoalDetailScreen from '../screens/savings/SavingsGoalDetailScreen';
+import SavingsGoalsScreen from '../screens/savings/SavingsGoalsScreen';
 
 export type RootStackParamList = {
 	Auth: undefined;
 	Tabs: { initialTab?: string } | undefined;
+	Tools: undefined;
+	Budgets: undefined;
+	SavingsGoals: undefined;
 	BudgetCreate: {
 		categories: any[];
 		budget: any;
@@ -36,6 +43,12 @@ export type RootStackParamList = {
 	Notifications: undefined;
 	StreakDetail: undefined;
 	StreakSettings: undefined;
+	SavingsGoalCreate: {
+		goalId?: number;
+	};
+	SavingsGoalDetail: {
+		goalId: number;
+	};
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -61,6 +74,8 @@ export default function RootNavigator() {
 						// User đã đăng nhập
 						<>
 					<Stack.Screen name="Tabs" component={Tabs} />
+					<Stack.Screen name="Budgets" component={BudgetsScreen} />
+					<Stack.Screen name="SavingsGoals" component={SavingsGoalsScreen} />
 					<Stack.Screen name="BudgetCreate" component={BudgetCreateScreen} />
 					<Stack.Screen name="BudgetDetail" component={BudgetDetailScreen} />
 					<Stack.Screen name="BudgetHistory" component={BudgetHistoryScreen} />
@@ -68,6 +83,8 @@ export default function RootNavigator() {
 							<Stack.Screen name="Notifications" component={NotificationScreen} />
 							<Stack.Screen name="StreakDetail" component={StreakDetailScreen} />
 							<Stack.Screen name="StreakSettings" component={StreakSettingsScreen} />
+							<Stack.Screen name="SavingsGoalCreate" component={SavingsGoalCreateScreen} />
+							<Stack.Screen name="SavingsGoalDetail" component={SavingsGoalDetailScreen} />
 						</>
 					) : (
 						// User chưa đăng nhập

@@ -264,24 +264,25 @@ export default function BudgetsScreen() {
 				/>
 			</View>
 
-			<ScrollView
-				horizontal
-				showsHorizontalScrollIndicator={false}
-				style={styles.tabsWrap}
-				contentContainerStyle={styles.tabsContent}
-			>
-				{timeTabs.map((tab, idx) => (
-					<TouchableOpacity
-						key={tab.label + tab.startDate + tab.endDate}
-						style={[styles.tabBtn, { backgroundColor: activeTab === idx ? theme.colors.primary : theme.colors.surface }]}
-						onPress={() => setActiveTab(idx)}
-					>
-						<Text style={[styles.tabText, { color: activeTab === idx ? '#fff' : theme.colors.onSurface }]}>
-							{tab.label}
-						</Text>
-					</TouchableOpacity>
-				))}
-			</ScrollView>
+
+		<ScrollView
+			horizontal
+			showsHorizontalScrollIndicator={false}
+			style={styles.tabsWrap}
+			contentContainerStyle={styles.tabsContent}
+		>
+			{timeTabs.map((tab, idx) => (
+				<TouchableOpacity
+					key={tab.label + tab.startDate + tab.endDate}
+					style={[styles.tabBtn, { backgroundColor: activeTab === idx ? theme.colors.primary : theme.colors.surface }]}
+					onPress={() => setActiveTab(idx)}
+				>
+					<Text style={[styles.tabText, { color: activeTab === idx ? '#fff' : theme.colors.onSurface }]}>
+						{tab.label}
+					</Text>
+				</TouchableOpacity>
+			))}
+		</ScrollView>
 
 			{timeTabs.length > 0 ? (
 				<BudgetContent
@@ -305,22 +306,9 @@ export default function BudgetsScreen() {
 				<View style={styles.emptyContainer}>
 					<Card style={[styles.emptyCard, { backgroundColor: theme.colors.surface }]}>
 						<Card.Content style={styles.emptyContent}>
-							<View style={[styles.emptyIconContainer, { backgroundColor: theme.colors.primaryContainer }]}>
-								<MaterialCommunityIcons
-									name="wallet-outline"
-									size={64}
-									color={theme.colors.primary}
-								/>
-							</View>
-
 							<Text style={[styles.emptyTitle, { color: theme.colors.onSurface }]}>
 								Chưa có ngân sách nào
 							</Text>
-
-							<Text style={[styles.emptyDescription, { color: theme.colors.onSurfaceVariant }]}>
-								Tạo ngân sách để quản lý chi tiêu hiệu quả hơn. Theo dõi và kiểm soát các khoản chi theo từng danh mục.
-							</Text>
-
 							<View style={styles.emptyFeatures}>
 								<View style={styles.emptyFeatureItem}>
 									<MaterialCommunityIcons name="chart-timeline-variant" size={24} color={theme.colors.primary} />
@@ -418,10 +406,10 @@ export default function BudgetsScreen() {
 
 const styles = StyleSheet.create({
 	container: { flex: 1 },
-	appBar: { borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+	appBar: { borderRadius: 12, paddingHorizontal: 0, paddingTop: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
 	walletSelector: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', flex: 1 },
 	walletTitle: { fontSize: 18 },
-	tabsWrap: { flexGrow: 0, marginVertical: 12 },
+	tabsWrap: { flexGrow: 0, marginBottom: 12 },
 	tabsContent: { gap: 9 },
 	tabBtn: { paddingVertical: 9, paddingHorizontal: 21, borderRadius: 18, minWidth: 80, alignItems: 'center' },
 	tabText: { fontWeight: '700', fontSize: 13 },

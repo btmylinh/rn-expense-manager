@@ -21,8 +21,8 @@ export const createLargeTransactionNotification = (amount: number, category: str
 export const createWeeklyReportNotification = (saved: number) => ({
   userId: 1,
   type: NotificationType.WEEKLY_REPORT,
-  title: '📊 Báo cáo tuần',
-  message: `Tuần này bạn đã tiết kiệm được ${saved.toLocaleString('vi-VN')}₫ so với tuần trước. Tuyệt vời! 🎉`,
+  title: ' Báo cáo tuần',
+  message: `Tuần này bạn đã tiết kiệm được ${saved.toLocaleString('vi-VN')}₫ so với tuần trước. Tuyệt vời! `,
   data: { saved },
   isRead: false,
 });

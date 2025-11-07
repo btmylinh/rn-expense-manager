@@ -15,6 +15,8 @@ let notificationSettings: Array<{userId: number, budgetAlerts: boolean, transact
 let streaks: Array<{id: number, userId: number, streakDays?: number, streak_days?: number, lastTransactionDate?: string, last_transaction_date?: string, createdAt?: string, created_at?: string, updatedAt?: string, updated_at?: string}> = [];
 let streakHistory: Array<{id: number, userId: number, date: string, hasActivity: boolean, activityType: string, createdAt: string}> = [];
 let streakSettings: Array<{id: number, userId: number, dailyReminderEnabled?: boolean, daily_reminder_enabled?: boolean, reminderTime?: string, reminder_time?: string, weekendMode?: boolean, weekend_mode?: boolean, freezeAvailable?: number, freeze_available?: number, freezeUsedThisWeek?: number, freeze_used_this_week?: number, bestStreak?: number, best_streak?: number, totalActiveDays?: number, total_active_days?: number, createdAt?: string, created_at?: string, updatedAt?: string, updated_at?: string}> = [];
+let savingsGoals: Array<{id: number, userId: number, name: string, targetAmount: number, currentAmount: number, deadline: string, icon: string, color: string, currency: string, status: string, createdAt: string, updatedAt: string}> = [];
+let savingsGoalContributions: Array<{id: number, goalId: number, amount: number, note: string, createdAt: string}> = [];
 let currentUserId: number | null = null;
 
 // Initialize mock data deterministically from JSON (map snake_case -> camelCase)
@@ -125,6 +127,31 @@ try {
 			totalActiveDays: s.total_active_days,
 			createdAt: s.created_at,
 			updatedAt: s.updated_at
+		}));
+	}
+	if (seed.savings_goals) {
+		savingsGoals = seed.savings_goals.map((g: any) => ({
+			id: g.id,
+			userId: g.user_id,
+			name: g.name,
+			targetAmount: g.target_amount,
+			currentAmount: g.current_amount,
+			deadline: g.deadline,
+			icon: g.icon,
+			color: g.color,
+			currency: g.currency || 'VND',
+			status: g.status,
+			createdAt: g.created_at,
+			updatedAt: g.updated_at
+		}));
+	}
+	if (seed.savings_goal_contributions) {
+		savingsGoalContributions = seed.savings_goal_contributions.map((c: any) => ({
+			id: c.id,
+			goalId: c.goal_id,
+			amount: c.amount,
+			note: c.note,
+			createdAt: c.created_at
 		}));
 	}
 } catch {}
@@ -2454,7 +2481,7 @@ async bulkDeleteTransactions(userId: number, transactionIds: number[]) {
 		let title, message;
 		if (saved > 0) {
 			title = '📊 Báo cáo tuần - Tuyệt vời!';
-			message = `Tuần này bạn đã tiết kiệm được ${saved.toLocaleString('vi-VN')}₫ so với tuần trước. Tuyệt vời! 🎉`;
+			message = `Tuần này bạn đã tiết kiệm được ${saved.toLocaleString('vi-VN')}₫ so với tuần trước. Tuyệt vời! `;
 		} else if (saved < 0) {
 			title = '📊 Báo cáo tuần - Cần cải thiện';
 			message = `Tuần này bạn đã chi nhiều hơn ${Math.abs(saved).toLocaleString('vi-VN')}₫ so với tuần trước. Hãy cẩn thận hơn! 💪`;
@@ -3126,6 +3153,191 @@ async resetStreak(userId: number) {
 		} catch (error) {
 			return { success: false, error: 'Failed to check warnings' };
 		}
+	},
+
+	// ============ SAVINGS GOALS ENDPOINTS ============
+	
+	async getSavingsGoals(userId: number) {
+		await delay(300);
+		const userGoals = savingsGoals.filter(g => g.userId === userId);
+		return {
+			success: true,
+			data: userGoals.map(goal => ({
+				...goal,
+				progress: goal.targetAmount > 0 ? (goal.currentAmount / goal.targetAmount) * 100 : 0
+			}))
+		};
+	},
+
+	async getSavingsGoalDetail(userId: number, goalId: number) {
+		await delay(300);
+		const goal = savingsGoals.find(g => g.id === goalId && g.userId === userId);
+		if (!goal) {
+			return { success: false, message: 'Mục tiêu không tồn tại' };
+		}
+
+		const contributions = savingsGoalContributions
+			.filter(c => c.goalId === goalId)
+			.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+		return {
+			success: true,
+			data: {
+				...goal,
+				progress: goal.targetAmount > 0 ? (goal.currentAmount / goal.targetAmount) * 100 : 0,
+				contributions
+			}
+		};
+	},
+
+	async createSavingsGoal(userId: number, data: {
+		name: string;
+		targetAmount: number;
+		deadline: string;
+		icon: string;
+		color: string;
+		currency?: string;
+	}) {
+		await delay(400);
+		
+		const newGoal = {
+			id: Math.max(...savingsGoals.map(g => g.id), 0) + 1,
+			userId,
+			name: data.name,
+			targetAmount: data.targetAmount,
+			currentAmount: 0,
+			deadline: data.deadline,
+			icon: data.icon,
+			color: data.color,
+			currency: data.currency || 'VND',
+			status: 'active',
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString()
+		};
+
+		savingsGoals.push(newGoal);
+		
+		return {
+			success: true,
+			data: {
+				...newGoal,
+				progress: 0
+			}
+		};
+	},
+
+	async updateSavingsGoal(userId: number, goalId: number, data: {
+		name?: string;
+		targetAmount?: number;
+		deadline?: string;
+		icon?: string;
+		color?: string;
+		currency?: string;
+		status?: string;
+	}) {
+		await delay(400);
+		
+		const goalIndex = savingsGoals.findIndex(g => g.id === goalId && g.userId === userId);
+		if (goalIndex === -1) {
+			return { success: false, message: 'Mục tiêu không tồn tại' };
+		}
+
+		const goal = savingsGoals[goalIndex];
+		savingsGoals[goalIndex] = {
+			...goal,
+			...data,
+			updatedAt: new Date().toISOString()
+		};
+
+		return {
+			success: true,
+			data: {
+				...savingsGoals[goalIndex],
+				progress: savingsGoals[goalIndex].targetAmount > 0 
+					? (savingsGoals[goalIndex].currentAmount / savingsGoals[goalIndex].targetAmount) * 100 
+					: 0
+			}
+		};
+	},
+
+	async deleteSavingsGoal(userId: number, goalId: number) {
+		await delay(300);
+		
+		const goalIndex = savingsGoals.findIndex(g => g.id === goalId && g.userId === userId);
+		if (goalIndex === -1) {
+			return { success: false, message: 'Mục tiêu không tồn tại' };
+		}
+
+		// Soft delete: change status to cancelled
+		savingsGoals[goalIndex] = {
+			...savingsGoals[goalIndex],
+			status: 'cancelled',
+			updatedAt: new Date().toISOString()
+		};
+
+		return { success: true, message: 'Đã hủy mục tiêu tiết kiệm' };
+	},
+
+	async addContribution(userId: number, goalId: number, amount: number, note?: string) {
+		await delay(400);
+		
+		const goalIndex = savingsGoals.findIndex(g => g.id === goalId && g.userId === userId);
+		if (goalIndex === -1) {
+			return { success: false, message: 'Mục tiêu không tồn tại' };
+		}
+
+		const goal = savingsGoals[goalIndex];
+		if (goal.status !== 'active') {
+			return { success: false, message: 'Không thể đóng góp vào mục tiêu đã hoàn thành hoặc bị hủy' };
+		}
+
+		// Create contribution record
+		const newContribution = {
+			id: Math.max(...savingsGoalContributions.map(c => c.id), 0) + 1,
+			goalId,
+			amount,
+			note: note || '',
+			createdAt: new Date().toISOString()
+		};
+		savingsGoalContributions.push(newContribution);
+
+		// Update goal's current amount
+		const newCurrentAmount = goal.currentAmount + amount;
+		savingsGoals[goalIndex] = {
+			...goal,
+			currentAmount: newCurrentAmount,
+			updatedAt: new Date().toISOString()
+		};
+
+		// Check if goal is completed (100% or more)
+		const progress = (newCurrentAmount / goal.targetAmount) * 100;
+		if (progress >= 100 && goal.status === 'active') {
+			savingsGoals[goalIndex].status = 'completed';
+			
+			// Create completion notification
+			const completionNotification = {
+				id: Math.max(...notifications.map(n => n.id), 0) + 1,
+				userId,
+				type: 'savings_goal_completed',
+				title: ' Chúc mừng!',
+				message: `Bạn đã hoàn thành mục tiêu "${goal.name}"!`,
+				data: { goalId, goalName: goal.name, targetAmount: goal.targetAmount },
+				isRead: false,
+				createdAt: new Date().toISOString()
+			};
+			notifications.push(completionNotification);
+		}
+
+		return {
+			success: true,
+			data: {
+				contribution: newContribution,
+				goal: {
+					...savingsGoals[goalIndex],
+					progress: (savingsGoals[goalIndex].currentAmount / savingsGoals[goalIndex].targetAmount) * 100
+				}
+			}
+		};
 	}
 };
 

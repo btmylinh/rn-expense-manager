@@ -29,53 +29,57 @@
     { "id": 3, "name": "Lãi ngân hàng", "type": 1, "icon": "bank-outline" },
     { "id": 4, "name": "Ăn uống", "type": 2, "icon": "silverware-fork-knife" },
     { "id": 5, "name": "Di chuyển", "type": 2, "icon": "car-outline" },
-    { "id": 6, "name": "Mua sắm", "type": 2, "icon": "shopping-outline" }
+    { "id": 6, "name": "Mua sắm", "type": 2, "icon": "shopping-outline" },
+    { "id": 7, "name": "Tiết kiệm", "type": 0, "icon": "piggy-bank" },
+    { "id": 8, "name": "Khác", "type": 0, "icon": "help-circle-outline" }
   ],
   "user_categories": [
-    { "id": 1, "user_id": 1, "name": "Ăn uống", "type": 2, "icon": "silverware-fork-knife" },
-    { "id": 2, "user_id": 1, "name": "Giải trí", "type": 2, "icon": "gamepad-variant-outline" },
-    { "id": 3, "user_id": 1, "name": "Di chuyển", "type": 2, "icon": "car-outline" },
-    { "id": 4, "user_id": 1, "name": "Lương", "type": 1, "icon": "briefcase-outline" },
-    { "id": 5, "user_id": 2, "name": "Ăn uống", "type": 2, "icon": "silverware-fork-knife" },
-    { "id": 6, "user_id": 2, "name": "Di chuyển", "type": 2, "icon": "car-outline" },
-    { "id": 7, "user_id": 2, "name": "Lương", "type": 1, "icon": "briefcase-outline" },
-    { "id": 8, "user_id": 3, "name": "Ăn uống", "type": 2, "icon": "silverware-fork-knife" },
-    { "id": 9, "user_id": 3, "name": "Di chuyển", "type": 2, "icon": "car-outline" },
-    { "id": 10, "user_id": 4, "name": "Ăn uống", "type": 2, "icon": "silverware-fork-knife" },
-    { "id": 11, "user_id": 5, "name": "Ăn uống", "type": 2, "icon": "silverware-fork-knife" },
-    { "id": 12, "user_id": 6, "name": "Ăn uống", "type": 2, "icon": "silverware-fork-knife" },
-    { "id": 13, "user_id": 7, "name": "Ăn uống", "type": 2, "icon": "silverware-fork-knife" },
-    { "id": 14, "user_id": 8, "name": "Ăn uống", "type": 2, "icon": "silverware-fork-knife" }
+    { "id": 1, "user_id": null, "name": "Tiết kiệm", "type": 0, "icon": "piggy-bank" },
+    { "id": 2, "user_id": null, "name": "Khác", "type": 0, "icon": "help-circle-outline" },
+    { "id": 3, "user_id": 1, "name": "Ăn uống", "type": 2, "icon": "silverware-fork-knife" },
+    { "id": 4, "user_id": 1, "name": "Giải trí", "type": 2, "icon": "gamepad-variant-outline" },
+    { "id": 5, "user_id": 1, "name": "Di chuyển", "type": 2, "icon": "car-outline" },
+    { "id": 6, "user_id": 1, "name": "Lương", "type": 1, "icon": "briefcase-outline" },
+    { "id": 7, "user_id": 2, "name": "Ăn uống", "type": 2, "icon": "silverware-fork-knife" },
+    { "id": 8, "user_id": 2, "name": "Di chuyển", "type": 2, "icon": "car-outline" },
+    { "id": 9, "user_id": 2, "name": "Lương", "type": 1, "icon": "briefcase-outline" },
+    { "id": 10, "user_id": 3, "name": "Ăn uống", "type": 2, "icon": "silverware-fork-knife" },
+    { "id": 11, "user_id": 3, "name": "Di chuyển", "type": 2, "icon": "car-outline" },
+    { "id": 12, "user_id": 4, "name": "Ăn uống", "type": 2, "icon": "silverware-fork-knife" },
+    { "id": 13, "user_id": 5, "name": "Ăn uống", "type": 2, "icon": "silverware-fork-knife" },
+    { "id": 14, "user_id": 6, "name": "Ăn uống", "type": 2, "icon": "silverware-fork-knife" },
+    { "id": 15, "user_id": 7, "name": "Ăn uống", "type": 2, "icon": "silverware-fork-knife" },
+    { "id": 16, "user_id": 8, "name": "Ăn uống", "type": 2, "icon": "silverware-fork-knife" }
   ],
   "transactions": [
-    { "id": 1, "user_id": 1, "wallet_id": 1, "user_category_id": 1, "amount": -150000, "transaction_date": "2025-10-29", "content": "Ăn trưa", "type": 2 },
-    { "id": 2, "user_id": 1, "wallet_id": 1, "user_category_id": 3, "amount": -120000, "transaction_date": "2025-10-30", "content": "Xăng xe", "type": 2 },
-    { "id": 3, "user_id": 1, "wallet_id": 1, "user_category_id": 1, "amount": -85000, "transaction_date": "2025-11-01", "content": "Cà phê", "type": 2 },
-    { "id": 4, "user_id": 1, "wallet_id": 1, "user_category_id": 2, "amount": -200000, "transaction_date": "2025-11-02", "content": "Xem phim", "type": 2 },
-    { "id": 5, "user_id": 1, "wallet_id": 1, "user_category_id": 4, "amount": 5000000, "transaction_date": "2025-11-01", "content": "Lương tháng 11", "type": 1 },
-    { "id": 6, "user_id": 1, "wallet_id": 1, "user_category_id": 3, "amount": -300000, "transaction_date": "2025-11-05", "content": "Đổ xăng", "type": 2 },
-    { "id": 7, "user_id": 1, "wallet_id": 1, "user_category_id": 1, "amount": -450000, "transaction_date": "2025-11-10", "content": "Ăn nhà hàng", "type": 2 },
-    { "id": 8, "user_id": 1, "wallet_id": 1, "user_category_id": 2, "amount": -180000, "transaction_date": "2025-11-12", "content": "Karaoke", "type": 2 },
-    { "id": 9, "user_id": 1, "wallet_id": 1, "user_category_id": 1, "amount": -75000, "transaction_date": "2025-10-31", "content": "Hôm nay - Ăn sáng", "type": 2 },
-    { "id": 10, "user_id": 1, "wallet_id": 1, "user_category_id": 1, "amount": -95000, "transaction_date": "2025-10-30", "content": "Hôm qua - Ăn tối", "type": 2 },
-    { "id": 11, "user_id": 1, "wallet_id": 1, "user_category_id": 1, "amount": -120000, "transaction_date": "2025-10-28", "content": "Thứ Hai - Ăn trưa", "type": 2 },
-    { "id": 12, "user_id": 1, "wallet_id": 1, "user_category_id": 1, "amount": -65000, "transaction_date": "2025-10-27", "content": "Chủ Nhật - Cà phê", "type": 2 },
-    { "id": 13, "user_id": 2, "wallet_id": 3, "user_category_id": 5, "amount": -80000, "transaction_date": "2025-11-04", "content": "Ăn trưa", "type": 2 },
-    { "id": 14, "user_id": 2, "wallet_id": 3, "user_category_id": 5, "amount": -100000, "transaction_date": "2025-11-03", "content": "Ăn tối", "type": 2 },
-    { "id": 15, "user_id": 3, "wallet_id": 5, "user_category_id": 8, "amount": -90000, "transaction_date": "2025-11-02", "content": "Ăn sáng", "type": 2 },
-    { "id": 16, "user_id": 4, "wallet_id": 6, "user_category_id": 10, "amount": -70000, "transaction_date": "2025-11-01", "content": "Cà phê", "type": 2 },
-    { "id": 17, "user_id": 5, "wallet_id": 7, "user_category_id": 11, "amount": -85000, "transaction_date": "2025-11-04", "content": "Ăn trưa", "type": 2 },
-    { "id": 18, "user_id": 6, "wallet_id": 8, "user_category_id": 12, "amount": -95000, "transaction_date": "2025-11-04", "content": "Ăn tối", "type": 2 },
-    { "id": 19, "user_id": 7, "wallet_id": 10, "user_category_id": 13, "amount": -110000, "transaction_date": "2025-11-04", "content": "Ăn trưa", "type": 2 },
-    { "id": 20, "user_id": 8, "wallet_id": 12, "user_category_id": 14, "amount": -75000, "transaction_date": "2025-11-04", "content": "Ăn sáng", "type": 2 }
+    { "id": 1, "user_id": 1, "wallet_id": 1, "user_category_id": 3, "amount": -150000, "transaction_date": "2025-10-29", "content": "Ăn trưa", "type": 2 },
+    { "id": 2, "user_id": 1, "wallet_id": 1, "user_category_id": 5, "amount": -120000, "transaction_date": "2025-10-30", "content": "Xăng xe", "type": 2 },
+    { "id": 3, "user_id": 1, "wallet_id": 1, "user_category_id": 3, "amount": -85000, "transaction_date": "2025-11-01", "content": "Cà phê", "type": 2 },
+    { "id": 4, "user_id": 1, "wallet_id": 1, "user_category_id": 4, "amount": -200000, "transaction_date": "2025-11-02", "content": "Xem phim", "type": 2 },
+    { "id": 5, "user_id": 1, "wallet_id": 1, "user_category_id": 6, "amount": 5000000, "transaction_date": "2025-11-01", "content": "Lương tháng 11", "type": 1 },
+    { "id": 6, "user_id": 1, "wallet_id": 1, "user_category_id": 5, "amount": -300000, "transaction_date": "2025-11-05", "content": "Đổ xăng", "type": 2 },
+    { "id": 7, "user_id": 1, "wallet_id": 1, "user_category_id": 3, "amount": -450000, "transaction_date": "2025-11-10", "content": "Ăn nhà hàng", "type": 2 },
+    { "id": 8, "user_id": 1, "wallet_id": 1, "user_category_id": 4, "amount": -180000, "transaction_date": "2025-11-12", "content": "Karaoke", "type": 2 },
+    { "id": 9, "user_id": 1, "wallet_id": 1, "user_category_id": 3, "amount": -75000, "transaction_date": "2025-10-31", "content": "Hôm nay - Ăn sáng", "type": 2 },
+    { "id": 10, "user_id": 1, "wallet_id": 1, "user_category_id": 3, "amount": -95000, "transaction_date": "2025-10-30", "content": "Hôm qua - Ăn tối", "type": 2 },
+    { "id": 11, "user_id": 1, "wallet_id": 1, "user_category_id": 3, "amount": -120000, "transaction_date": "2025-10-28", "content": "Thứ Hai - Ăn trưa", "type": 2 },
+    { "id": 12, "user_id": 1, "wallet_id": 1, "user_category_id": 3, "amount": -65000, "transaction_date": "2025-10-27", "content": "Chủ Nhật - Cà phê", "type": 2 },
+    { "id": 13, "user_id": 2, "wallet_id": 3, "user_category_id": 7, "amount": -80000, "transaction_date": "2025-11-04", "content": "Ăn trưa", "type": 2 },
+    { "id": 14, "user_id": 2, "wallet_id": 3, "user_category_id": 7, "amount": -100000, "transaction_date": "2025-11-03", "content": "Ăn tối", "type": 2 },
+    { "id": 15, "user_id": 3, "wallet_id": 5, "user_category_id": 10, "amount": -90000, "transaction_date": "2025-11-02", "content": "Ăn sáng", "type": 2 },
+    { "id": 16, "user_id": 4, "wallet_id": 6, "user_category_id": 12, "amount": -70000, "transaction_date": "2025-11-01", "content": "Cà phê", "type": 2 },
+    { "id": 17, "user_id": 5, "wallet_id": 7, "user_category_id": 13, "amount": -85000, "transaction_date": "2025-11-04", "content": "Ăn trưa", "type": 2 },
+    { "id": 18, "user_id": 6, "wallet_id": 8, "user_category_id": 14, "amount": -95000, "transaction_date": "2025-11-04", "content": "Ăn tối", "type": 2 },
+    { "id": 19, "user_id": 7, "wallet_id": 10, "user_category_id": 15, "amount": -110000, "transaction_date": "2025-11-04", "content": "Ăn trưa", "type": 2 },
+    { "id": 20, "user_id": 8, "wallet_id": 12, "user_category_id": 16, "amount": -75000, "transaction_date": "2025-11-04", "content": "Ăn sáng", "type": 2 }
   ],
   "budgets": [
-    { "id": 1, "user_id": 1, "user_category_id": 1, "wallet_id": 1, "amount": 900000, "start_date": "2025-10-01", "end_date": "2025-10-31", "is_repeat": 1, "created_at": "2025-10-01T00:00:00.000Z", "updated_at": "2025-10-01T00:00:00.000Z" },
-    { "id": 2, "user_id": 1, "user_category_id": 2, "wallet_id": 1, "amount": 500000, "start_date": "2025-11-01", "end_date": "2025-11-30", "is_repeat": 0, "created_at": "2025-10-25T10:23:00.000Z", "updated_at": "2025-10-25T10:23:00.000Z" },
-    { "id": 3, "user_id": 1, "user_category_id": 3, "wallet_id": 1, "amount": 800000, "start_date": "2025-11-01", "end_date": "2025-11-30", "is_repeat": 0, "created_at": "2025-10-25T10:23:00.000Z", "updated_at": "2025-10-25T10:23:00.000Z" },
+    { "id": 1, "user_id": 1, "user_category_id": 3, "wallet_id": 1, "amount": 900000, "start_date": "2025-10-01", "end_date": "2025-10-31", "is_repeat": 1, "created_at": "2025-10-01T00:00:00.000Z", "updated_at": "2025-10-01T00:00:00.000Z" },
+    { "id": 2, "user_id": 1, "user_category_id": 4, "wallet_id": 1, "amount": 500000, "start_date": "2025-11-01", "end_date": "2025-11-30", "is_repeat": 0, "created_at": "2025-10-25T10:23:00.000Z", "updated_at": "2025-10-25T10:23:00.000Z" },
+    { "id": 3, "user_id": 1, "user_category_id": 5, "wallet_id": 1, "amount": 800000, "start_date": "2025-11-01", "end_date": "2025-11-30", "is_repeat": 0, "created_at": "2025-10-25T10:23:00.000Z", "updated_at": "2025-10-25T10:23:00.000Z" },
     { "id": 4, "user_id": 1, "user_category_id": 1, "wallet_id": 1, "amount": 2000000, "start_date": "2025-10-01", "end_date": "2025-12-31", "is_repeat": 0, "created_at": "2025-09-25T10:23:00.000Z", "updated_at": "2025-09-25T10:23:00.000Z" },
     { "id": 5, "user_id": 1, "user_category_id": 2, "wallet_id": 1, "amount": 1500000, "start_date": "2025-11-01", "end_date": "2026-01-31", "is_repeat": 0, "created_at": "2025-10-25T10:23:00.000Z", "updated_at": "2025-10-25T10:23:00.000Z" },
-    { "id": 6, "user_id": 1, "user_category_id": 3, "wallet_id": 1, "amount": 300000, "start_date": "2025-01-01", "end_date": "2025-12-31", "is_repeat": 0, "created_at": "2025-01-01T10:23:00.000Z", "updated_at": "2025-01-01T10:23:00.000Z" }
+    { "id": 6, "user_id": 1, "user_category_id": 5, "wallet_id": 1, "amount": 300000, "start_date": "2025-01-01", "end_date": "2025-12-31", "is_repeat": 0, "created_at": "2025-01-01T10:23:00.000Z", "updated_at": "2025-01-01T10:23:00.000Z" }
   ],
   "notifications": [
     {
@@ -132,7 +136,7 @@
       "user_id": 1,
       "type": "weekly_report",
       "title": "Báo cáo tuần",
-      "message": "Tuần này bạn đã tiết kiệm được 200,000₫ so với tuần trước. Tuyệt vời! 🎉",
+      "message": "Tuần này bạn đã tiết kiệm được 200,000₫ so với tuần trước. Tuyệt vời! ",
       "data": {
         "weeklySpent": 800000,
         "previousWeek": 1000000,
@@ -369,6 +373,150 @@
       "total_active_days": 45,
       "created_at": "2025-10-01T00:00:00.000Z",
       "updated_at": "2025-11-04T00:00:00.000Z"
+    }
+  ],
+  "savings_goals": [
+    {
+      "id": 1,
+      "user_id": 1,
+      "name": "Mua Laptop",
+      "target_amount": 20000000,
+      "current_amount": 15000000,
+      "deadline": "2025-12-31",
+      "icon": "laptop",
+      "color": "#FF8A00",
+      "currency": "VND",
+      "status": "active",
+      "created_at": "2025-01-15T00:00:00.000Z",
+      "updated_at": "2025-11-01T00:00:00.000Z"
+    },
+    {
+      "id": 2,
+      "user_id": 1,
+      "name": "Du lịch Đà Lạt",
+      "target_amount": 350,
+      "current_amount": 150,
+      "deadline": "2025-06-30",
+      "icon": "airplane",
+      "color": "#4CAF50",
+      "currency": "USD",
+      "status": "active",
+      "created_at": "2025-02-01T00:00:00.000Z",
+      "updated_at": "2025-10-28T00:00:00.000Z"
+    },
+    {
+      "id": 3,
+      "user_id": 1,
+      "name": "Mua xe máy",
+      "target_amount": 50000000,
+      "current_amount": 50000000,
+      "deadline": "2025-03-31",
+      "icon": "motorbike",
+      "color": "#2196F3",
+      "currency": "VND",
+      "status": "completed",
+      "created_at": "2024-10-01T00:00:00.000Z",
+      "updated_at": "2025-03-25T00:00:00.000Z"
+    },
+    {
+      "id": 4,
+      "user_id": 1,
+      "name": "Quỹ khẩn cấp",
+      "target_amount": 30000000,
+      "current_amount": 12000000,
+      "deadline": "2026-01-31",
+      "icon": "shield-check",
+      "color": "#9C27B0",
+      "currency": "VND",
+      "status": "active",
+      "created_at": "2025-03-01T00:00:00.000Z",
+      "updated_at": "2025-11-05T00:00:00.000Z"
+    }
+  ],
+  "savings_goal_contributions": [
+    {
+      "id": 1,
+      "goal_id": 1,
+      "amount": 5000000,
+      "note": "Tiền lương tháng 1",
+      "created_at": "2025-01-31T00:00:00.000Z"
+    },
+    {
+      "id": 2,
+      "goal_id": 1,
+      "amount": 3000000,
+      "note": "Tiền thưởng",
+      "created_at": "2025-02-15T00:00:00.000Z"
+    },
+    {
+      "id": 3,
+      "goal_id": 1,
+      "amount": 2000000,
+      "note": "Tiết kiệm tháng 3",
+      "created_at": "2025-03-31T00:00:00.000Z"
+    },
+    {
+      "id": 4,
+      "goal_id": 1,
+      "amount": 5000000,
+      "note": "Bán đồ cũ",
+      "created_at": "2025-11-01T00:00:00.000Z"
+    },
+    {
+      "id": 5,
+      "goal_id": 2,
+      "amount": 80,
+      "note": "Tiết kiệm tháng 2",
+      "created_at": "2025-02-28T00:00:00.000Z"
+    },
+    {
+      "id": 6,
+      "goal_id": 2,
+      "amount": 70,
+      "note": "Tiền làm thêm",
+      "created_at": "2025-10-28T00:00:00.000Z"
+    },
+    {
+      "id": 7,
+      "goal_id": 3,
+      "amount": 20000000,
+      "note": "Tiền lương tích lũy",
+      "created_at": "2025-01-15T00:00:00.000Z"
+    },
+    {
+      "id": 8,
+      "goal_id": 3,
+      "amount": 15000000,
+      "note": "Tiền thưởng tết",
+      "created_at": "2025-02-10T00:00:00.000Z"
+    },
+    {
+      "id": 9,
+      "goal_id": 3,
+      "amount": 15000000,
+      "note": "Hoàn thành mục tiêu",
+      "created_at": "2025-03-25T00:00:00.000Z"
+    },
+    {
+      "id": 10,
+      "goal_id": 4,
+      "amount": 5000000,
+      "note": "Khởi tạo quỹ",
+      "created_at": "2025-03-01T00:00:00.000Z"
+    },
+    {
+      "id": 11,
+      "goal_id": 4,
+      "amount": 3000000,
+      "note": "Tiết kiệm tháng 4",
+      "created_at": "2025-04-30T00:00:00.000Z"
+    },
+    {
+      "id": 12,
+      "goal_id": 4,
+      "amount": 4000000,
+      "note": "Tiết kiệm tháng 11",
+      "created_at": "2025-11-05T00:00:00.000Z"
     }
   ],
   "currentWalletByUser": { "1": 1 }

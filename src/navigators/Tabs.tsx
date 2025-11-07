@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppTheme } from '../theme';
 import DashboardScreen from '../screens/dashboard/DashboardScreen';
 import AddTransactionScreen from '../screens/transactions/AddTransactionScreen';
-import BudgetsScreen from '../screens/budgets/BudgetsScreen';
+import ToolsScreen from '../screens/tools/ToolsScreen';
 import ProfileScreen from '../screens/profile/ProfileScreen';
 import ReportsScreen from '../screens/reports/ReportsScreen';
 import TransactionsScreen from '../screens/transactions/TransactionsScreen';
@@ -27,7 +27,7 @@ export default function Tabs({ route }: any) {
 				tabBarIcon: ({ color, size }) => {
 					let name: any = 'home';
 					if (route.name === 'Tổng quan') name = 'view-dashboard-outline';
-					else if (route.name === 'Ngân sách') name = 'cash-multiple';
+					else if (route.name === 'Công cụ tiền tệ') name = 'cash';
 					else if (route.name === 'Thêm') name = 'plus-circle';
 					else if (route.name === 'Sổ giao dịch') name = 'book-account';
 					else if (route.name === 'Hồ sơ') name = 'account';
@@ -41,7 +41,7 @@ export default function Tabs({ route }: any) {
 			})}
 		>
 			<Tab.Screen name="Tổng quan" component={DashboardScreen} />
-			<Tab.Screen name="Ngân sách" component={BudgetsScreen} />
+			<Tab.Screen name="Công cụ tiền tệ" component={ToolsScreen} />
 			<Tab.Screen name="Thêm" component={AddTransactionScreen} />
 			<Tab.Screen name="Sổ giao dịch" component={TransactionsScreen} />
 			<Tab.Screen name="Hồ sơ" component={ProfileScreen} />

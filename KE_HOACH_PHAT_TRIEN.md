@@ -370,6 +370,288 @@ Sau session này: Feature Mục tiêu tiết kiệm hoàn chỉnh cơ bản
 
 ---
 
+### SESSION 1E: Hoàn thiện UI và xử lý trạng thái đặc biệt
+
+Thời gian: 0.5 ngày
+
+Trước session này: Feature Mục tiêu đã hoàn chỉnh cơ bản (Session 1D)
+
+Session này làm gì:
+1. Xử lý các button chưa có action:
+   - Button "Sửa mục tiêu" trong SavingsGoalDetailScreen:
+     * onPress → navigate('SavingsGoalCreate', { goalId, editMode: true })
+     * SavingsGoalCreateScreen load dữ liệu cũ khi editMode = true
+   
+   - Button "Xóa mục tiêu" trong SavingsGoalDetailScreen:
+     * Hiển thị Alert xác nhận: "Bạn có chắc muốn xóa mục tiêu này?"
+     * Nếu đồng ý: gọi `fakeApi.deleteSavingsGoal(userId, goalId)`
+     * Navigate back về danh sách
+     * Hiển thị Snackbar: "Đã xóa mục tiêu"
+   
+   - Button "Thêm tiền" trong SavingsGoalCard (màn danh sách):
+     * Mở modal nhanh để thêm tiền (không cần vào chi tiết)
+     * Modal giống trong DetailScreen
+     * Sau khi thêm thành công: refresh danh sách
+
+2. Xử lý trạng thái đặc biệt của mục tiêu:
+   
+   **Trạng thái 1: Đã đạt mục tiêu (completed)**
+   - SavingsGoalCard:
+     * Background màu xanh nhạt (#E8F5E9)
+     * Icon check ✓ ở góc
+     * Progress bar 100% màu xanh
+     * Text "Đã đạt mục tiêu!" thay vì "Còn thiếu X đ"
+     * Button "Thêm tiền" ẩn đi
+     * Badge "Hoàn thành" màu xanh
+   
+   - SavingsGoalDetailScreen:
+     * Header: Hiển thị confetti animation hoặc icon celebration
+     * Stats: Highlight "Đã đạt 100%"
+     * Dự đoán: "Chúc mừng! Bạn đã đạt mục tiêu!"
+     * Button "Thêm tiền" → đổi thành "Tiếp tục tiết kiệm" (vẫn cho phép thêm)
+     * Suggestion: "Bạn có muốn tạo mục tiêu mới?"
+   
+   **Trạng thái 2: Quá hạn (overdue)**
+   - Điều kiện: deadline < today && status === 'active' && currentAmount < targetAmount
+   
+   - SavingsGoalCard:
+     * Border màu đỏ nhạt
+     * Icon cảnh báo 
+     * Text màu đỏ: "Quá hạn X ngày"
+     * Badge "Quá hạn" màu đỏ
+     * Progress bar màu đỏ/cam
+   
+   - SavingsGoalDetailScreen:
+     * Card deadline: Background màu đỏ nhạt
+     * Text: "Đã quá hạn X ngày"
+     * Dự đoán: "Mục tiêu đã quá hạn. Bạn có muốn gia hạn deadline?"
+     * Thêm button "Gia hạn deadline" → mở DatePicker
+     * Suggestion: "Xem xét điều chỉnh mục tiêu hoặc gia hạn thời gian"
+   
+   **Trạng thái 3: Sắp đến hạn (deadline trong 7 ngày)**
+   - SavingsGoalCard:
+     * Border màu vàng/cam
+     * Icon 
+     * Text màu cam: "Còn X ngày"
+     * Badge "Gấp" màu cam
+   
+   - SavingsGoalDetailScreen:
+     * Card deadline: Background màu vàng nhạt
+     * Text nổi bật: "Chỉ còn X ngày!"
+     * Dự đoán nếu chậm: "Cần thêm Y đ/ngày để kịp deadline"
+
+3. Thêm filter/sort trong danh sách:
+   - Tabs trong SavingsGoalsContent:
+     * [Đang tiến hành] (active)
+     * [Đã đạt] (completed)
+     * [Tất cả]
+   
+   - Sort options (dropdown hoặc chip):
+     * Mới nhất
+     * Sắp đến hạn
+     * Tiến độ cao nhất
+     * Tiến độ thấp nhất
+
+4. Animation và feedback:
+   - Khi thêm tiền thành công:
+     * Progress bar animate từ % cũ → % mới
+     * Haptic feedback (rung nhẹ)
+     * Snackbar: "Đã thêm X đ vào mục tiêu"
+   
+   - Khi đạt 100%:
+     * Modal celebration với animation
+     * Text: "Chúc mừng! Bạn đã đạt mục tiêu [Tên mục tiêu]!"
+     * Confetti hoặc lottie animation
+     * Button "Tuyệt vời!" để đóng
+
+5. Empty states cải tiến:
+   - Tab "Đã đạt" khi chưa có:
+     * Icon 
+     * Text: "Chưa có mục tiêu nào hoàn thành"
+     * "Hãy cố gắng đạt mục tiêu đầu tiên!"
+   
+   - Lịch sử đóng góp trống:
+     * Icon 
+     * Text: "Chưa có đóng góp nào"
+     * "Bắt đầu thêm tiền vào mục tiêu nhé!"
+
+Sau session này: Feature Mục tiêu tiết kiệm hoàn chỉnh 100%, xử lý đầy đủ các trường hợp đặc biệt
+
+---
+
+### SESSION 1F: Refactor Navigation - Tạo màn hình Công cụ
+
+Thời gian: 0.5 ngày
+
+Trước session này: Ngân sách và Mục tiêu đang gộp chung trong 1 tab (Session 1E)
+
+Lý do refactor: 
+- Ngân sách và Mục tiêu không liên quan trực tiếp nhau lắm
+- Cần tách riêng để dễ mở rộng thêm công cụ khác
+- UX tốt hơn khi có màn hình tổng hợp các công cụ quản lý
+
+Session này làm gì:
+1. Tạo màn hình Công cụ mới `src/screens/tools/ToolsScreen.tsx`:
+   - Layout: Grid 2 cột, các card công cụ hình vuông
+   - Mỗi card có:
+     * Icon lớn (MaterialCommunityIcons)
+     * Tên công cụ
+     * Mô tả ngắn (1 dòng)
+     * Ripple effect khi nhấn
+   
+   Danh sách công cụ hiển thị dạng grid 2 cột:
+   - Hàng 1: [Ngân sách] [Mục tiêu]
+   - Hàng 2: [Chi định kỳ] [Gợi ý tiết kiệm]
+   
+   Code structure:
+   ```typescript
+   const tools = [
+     {
+       id: 'budgets',
+       icon: 'wallet-outline',
+       name: 'Ngân sách',
+       description: 'Quản lý chi tiêu theo kế hoạch',
+       color: '#FF8A00',
+       onPress: () => navigation.navigate('Budgets')
+     },
+     {
+       id: 'savings',
+       icon: 'target',
+       name: 'Mục tiêu tiết kiệm',
+       description: 'Tiết kiệm cho tương lai',
+       color: '#4CAF50',
+       onPress: () => navigation.navigate('SavingsGoals')
+     },
+     {
+       id: 'recurring',
+       icon: 'refresh-circle',
+       name: 'Chi tiêu định kỳ',
+       description: 'Dự báo & nhắc nhở chi phí',
+       color: '#2196F3',
+       onPress: () => navigation.navigate('RecurringExpenses')
+     },
+     {
+       id: 'recommendations',
+       icon: 'lightbulb-outline',
+       name: 'Gợi ý tiết kiệm',
+       description: 'Phân tích và tiết kiệm',
+       color: '#FFC107',
+       onPress: () => navigation.navigate('Recommendations')
+     }
+   ];
+   ```
+
+2. Refactor Navigation structure:
+   - Update `src/navigators/Tabs.tsx`:
+     * Đổi tab "Kế hoạch" → "Công cụ" (Tools)
+     * Icon: `briefcase-outline` hoặc `toolbox-outline`
+     * Component: ToolsScreen
+   
+   - Update `src/navigators/RootNavigator.tsx`:
+     * Thêm các màn hình mới vào Stack:
+     ```typescript
+     export type RootStackParamList = {
+       ...
+       Tools: undefined;
+       Budgets: undefined;
+       SavingsGoals: undefined;
+       SavingsGoalCreate: { goalId?: number };
+       SavingsGoalDetail: { goalId: number };
+     };
+     
+     <Stack.Screen name="Tools" component={ToolsScreen} />
+     <Stack.Screen name="Budgets" component={BudgetsScreen} />
+     <Stack.Screen name="SavingsGoals" component={SavingsGoalsScreen} />
+     ```
+
+3. Refactor BudgetsScreen:
+   - Xóa SegmentedButtons ([Ngân sách] [Mục tiêu])
+   - Chỉ giữ lại phần Ngân sách
+   - Loại bỏ logic render conditional
+   - AppBar title: "Ngân sách"
+
+4. Tạo màn hình SavingsGoals độc lập:
+   - Tạo file `src/screens/savings/SavingsGoalsScreen.tsx`
+   - Copy toàn bộ code từ component SavingsGoalsContent
+   - Thêm AppBar với title "Mục tiêu tiết kiệm"
+   - Thêm back button
+   - File `src/screens/budgets/SavingsGoalsContent.tsx` có thể xóa
+
+5. Style cho ToolCard component:
+   ```typescript
+   interface ToolCardProps {
+     icon: string;
+     name: string;
+     description: string;
+     color: string;
+     onPress: () => void;
+   }
+   
+   const ToolCard = ({ icon, name, description, color, onPress }) => (
+     <Card style={styles.toolCard} onPress={onPress}>
+       <Card.Content style={styles.toolCardContent}>
+         <View style={[styles.iconContainer, { backgroundColor: color + '20' }]}>
+           <MaterialCommunityIcons 
+             name={icon} 
+             size={40} 
+             color={color} 
+           />
+         </View>
+         <Text style={styles.toolName}>{name}</Text>
+         <Text style={styles.toolDescription}>{description}</Text>
+       </Card.Content>
+     </Card>
+   );
+   
+   const styles = StyleSheet.create({
+     grid: {
+       padding: 16,
+       flexDirection: 'row',
+       flexWrap: 'wrap',
+       justifyContent: 'space-between',
+     },
+     toolCard: {
+       width: '48%',
+       marginBottom: 16,
+       minHeight: 160,
+     },
+     toolCardContent: {
+       alignItems: 'center',
+       paddingVertical: 20,
+     },
+     iconContainer: {
+       width: 70,
+       height: 70,
+       borderRadius: 35,
+       justifyContent: 'center',
+       alignItems: 'center',
+       marginBottom: 12,
+     },
+     toolName: {
+       fontSize: 16,
+       fontWeight: '600',
+       textAlign: 'center',
+       marginBottom: 4,
+     },
+     toolDescription: {
+       fontSize: 12,
+       color: '#666',
+       textAlign: 'center',
+     },
+   });
+   ```
+
+6. Header section (optional):
+   - Thêm header text ở đầu ToolsScreen
+   - Hiển thị quick stats: số ngân sách đang hoạt động, số mục tiêu đang theo dõi
+
+Sau session này: 
+- Navigation rõ ràng hơn, Ngân sách và Mục tiêu tách riêng
+- Có màn hình Công cụ tổng hợp dạng grid, dễ mở rộng
+- UX tốt hơn với layout trực quan
+
+---
+
 ## FEATURE 2: DỰ BÁO CHI TIÊU TÁI DIỄN (RECURRING EXPENSES)
 
 ### SESSION 2A: Mock Data và API phát hiện chi tiêu định kỳ
