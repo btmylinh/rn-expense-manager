@@ -85,7 +85,7 @@ export default function AppBar({
           <Appbar.BackAction 
             onPress={onBack} 
             iconColor={backIconColor || theme.colors.onSurface}
-            size={20} 
+            size={24} 
           />
         )}
         

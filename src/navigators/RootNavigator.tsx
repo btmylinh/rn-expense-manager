@@ -20,6 +20,7 @@ import StreakSettingsScreen from '../screens/streak/StreakSettingsScreen';
 import SavingsGoalCreateScreen from '../screens/savings/SavingsGoalCreateScreen';
 import SavingsGoalDetailScreen from '../screens/savings/SavingsGoalDetailScreen';
 import SavingsGoalsScreen from '../screens/savings/SavingsGoalsScreen';
+import ChatbotScreen from '../screens/tools/ChatbotScreen';
 
 export type RootStackParamList = {
 	Auth: undefined;
@@ -27,6 +28,7 @@ export type RootStackParamList = {
 	Tools: undefined;
 	Budgets: undefined;
 	SavingsGoals: undefined;
+	Chatbot: undefined;
 	BudgetCreate: {
 		categories: any[];
 		budget: any;
@@ -84,7 +86,8 @@ export default function RootNavigator() {
 							<Stack.Screen name="StreakDetail" component={StreakDetailScreen} />
 							<Stack.Screen name="StreakSettings" component={StreakSettingsScreen} />
 							<Stack.Screen name="SavingsGoalCreate" component={SavingsGoalCreateScreen} />
-							<Stack.Screen name="SavingsGoalDetail" component={SavingsGoalDetailScreen} />
+						<Stack.Screen name="SavingsGoalDetail" component={SavingsGoalDetailScreen} />
+						<Stack.Screen name="Chatbot" component={ChatbotScreen} />
 						</>
 					) : (
 						// User chưa đăng nhập

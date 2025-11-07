@@ -65,12 +65,12 @@ export default function ToolsScreen() {
 			onPress: () => navigation.navigate('SavingsGoals')
 		},
 		{
-			id: 'recurring',
-			icon: 'refresh-circle',
-			name: 'Chi tiêu định kỳ',
-			description: 'Dự báo & nhắc nhở chi phí',
-			color: '#2196F3',
-			onPress: () => console.log('Navigate to RecurringExpenses') // TODO: Implement later
+			id: 'chatbot',
+			icon: 'robot-happy-outline',
+			name: 'Chatbot tài chính',
+			description: 'Hỏi đáp & gợi ý chi tiêu',
+			color: '#7C3AED',
+			onPress: () => navigation.navigate('Chatbot')
 		},
 		{
 			id: 'recommendations',
@@ -109,19 +109,6 @@ export default function ToolsScreen() {
 							onPress={tool.onPress}
 						/>
 					))}
-				</View>
-
-				{/* Coming Soon Section */}
-				<View style={styles.comingSoonSection}>
-					<Text style={[styles.comingSoonTitle, { color: theme.colors.onSurfaceVariant }]}>
-						Sắp ra mắt
-					</Text>
-					<Text style={[styles.comingSoonDescription, { color: theme.colors.onSurfaceVariant }]}>
-						• Báo cáo chi tiết{'\n'}
-						• Đầu tư thông minh{'\n'}
-						• Quản lý nợ{'\n'}
-						• Kế hoạch nghỉ hưu
-					</Text>
 				</View>
 			</ScrollView>
 		</View>

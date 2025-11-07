@@ -17,6 +17,42 @@ let streakHistory: Array<{id: number, userId: number, date: string, hasActivity:
 let streakSettings: Array<{id: number, userId: number, dailyReminderEnabled?: boolean, daily_reminder_enabled?: boolean, reminderTime?: string, reminder_time?: string, weekendMode?: boolean, weekend_mode?: boolean, freezeAvailable?: number, freeze_available?: number, freezeUsedThisWeek?: number, freeze_used_this_week?: number, bestStreak?: number, best_streak?: number, totalActiveDays?: number, total_active_days?: number, createdAt?: string, created_at?: string, updatedAt?: string, updated_at?: string}> = [];
 let savingsGoals: Array<{id: number, userId: number, name: string, targetAmount: number, currentAmount: number, deadline: string, icon: string, color: string, currency: string, status: string, createdAt: string, updatedAt: string}> = [];
 let savingsGoalContributions: Array<{id: number, goalId: number, amount: number, note: string, createdAt: string}> = [];
+type ChatRole = 'user' | 'assistant' | 'system';
+type FakeChatMessage = {
+	id: string;
+	userId: number;
+	role: ChatRole;
+	content: string;
+	createdAt: string;
+	metadata?: Record<string, unknown>;
+};
+type FakeChatFaq = {
+	id: string;
+	question: string;
+	answer: string;
+	tags: string[];
+};
+let chatMessages: FakeChatMessage[] = [];
+let chatFaqs: FakeChatFaq[] = [
+	{
+		id: 'faq-1',
+		question: 'Làm sao để theo dõi chi tiêu hàng tháng?',
+		answer: 'Bạn có thể tạo ngân sách cho từng danh mục và xem báo cáo trong mục Thống kê.',
+		tags: ['budget', 'tracking'],
+	},
+	{
+		id: 'faq-2',
+		question: 'Tôi nên tiết kiệm bao nhiêu mỗi tháng?',
+		answer: 'Hãy đặt mục tiêu tiết kiệm 10-20% thu nhập và dùng tính năng Mục tiêu tiết kiệm để theo dõi.',
+		tags: ['saving', 'goal'],
+	},
+	{
+		id: 'faq-3',
+		question: 'Ứng dụng có nhắc nhở giao dịch không?',
+		answer: 'Bạn có thể bật nhắc nhở trong phần Cài đặt thông báo để không bỏ lỡ giao dịch quan trọng.',
+		tags: ['notification'],
+	},
+];
 let currentUserId: number | null = null;
 
 // Initialize mock data deterministically from JSON (map snake_case -> camelCase)
@@ -152,6 +188,24 @@ try {
 			amount: c.amount,
 			note: c.note,
 			createdAt: c.created_at
+		}));
+	}
+	if (seed.chat_messages) {
+		chatMessages = seed.chat_messages.map((m: any) => ({
+			id: String(m.id ?? `msg-${m.created_at ?? Date.now()}`),
+			userId: m.user_id ?? mockUserId,
+			role: (m.role as ChatRole) ?? 'assistant',
+			content: m.content ?? '',
+			createdAt: m.created_at ?? new Date().toISOString(),
+			metadata: m.metadata,
+		}));
+	}
+	if (seed.chat_faqs) {
+		chatFaqs = seed.chat_faqs.map((f: any) => ({
+			id: String(f.id ?? `faq-${f.question}`),
+			question: f.question ?? '',
+			answer: f.answer ?? '',
+			tags: Array.isArray(f.tags) ? f.tags : [],
 		}));
 	}
 } catch {}
@@ -3336,6 +3390,67 @@ async resetStreak(userId: number) {
 					...savingsGoals[goalIndex],
 					progress: (savingsGoals[goalIndex].currentAmount / savingsGoals[goalIndex].targetAmount) * 100
 				}
+			}
+		};
+	},
+
+	// ============ CHATBOT ENDPOINTS ============
+
+	async getChatHistory(userId: number) {
+		await delay(200);
+		const history = chatMessages
+			.filter(message => message.userId === userId)
+			.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+		return { success: true, data: history };
+	},
+
+	async getFAQs() {
+		await delay(150);
+		return { success: true, data: chatFaqs };
+	},
+
+	async sendChatMessage(userId: number, content: string) {
+		await delay(400);
+		const trimmed = content.trim();
+		if (!trimmed) {
+			return { success: false, message: 'Tin nhắn trống' };
+		}
+
+		const now = new Date().toISOString();
+		const userMessage: FakeChatMessage = {
+			id: `chat-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+			userId,
+			role: 'user',
+			content: trimmed,
+			createdAt: now,
+		};
+		chatMessages.push(userMessage);
+
+		const normalized = trimmed.toLowerCase();
+		const matchedFaq = chatFaqs.find(faq =>
+			faq.question.toLowerCase().includes(normalized) || normalized.includes(faq.question.toLowerCase())
+		);
+		const assistantResponse = matchedFaq?.answer
+			|| 'Mình đã ghi nhận câu hỏi của bạn. Hãy kiểm tra báo cáo chi tiêu hoặc mục tiêu tiết kiệm để có thêm thông tin nhé!';
+		const assistantMessage: FakeChatMessage = {
+			id: `chat-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+			userId,
+			role: 'assistant',
+			content: assistantResponse,
+			createdAt: new Date().toISOString(),
+			metadata: matchedFaq ? { source: 'faq', faqId: matchedFaq.id } : undefined,
+		};
+		chatMessages.push(assistantMessage);
+
+		const suggestions = chatFaqs.slice(0, 4).map(faq => faq.question);
+
+		return {
+			success: true,
+			data: {
+				userMessage,
+				assistantMessage,
+				suggestions,
+				context: matchedFaq ? { matchedFaqId: matchedFaq.id } : undefined,
 			}
 		};
 	}
