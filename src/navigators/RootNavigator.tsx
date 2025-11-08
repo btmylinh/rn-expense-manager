@@ -21,6 +21,7 @@ import SavingsGoalCreateScreen from '../screens/savings/SavingsGoalCreateScreen'
 import SavingsGoalDetailScreen from '../screens/savings/SavingsGoalDetailScreen';
 import SavingsGoalsScreen from '../screens/savings/SavingsGoalsScreen';
 import ChatbotScreen from '../screens/tools/ChatbotScreen';
+import RecurringExpensesScreen from '../screens/recurring/RecurringExpensesScreen';
 
 export type RootStackParamList = {
 	Auth: undefined;
@@ -29,6 +30,7 @@ export type RootStackParamList = {
 	Budgets: undefined;
 	SavingsGoals: undefined;
 	Chatbot: undefined;
+	RecurringExpenses: undefined;
 	BudgetCreate: {
 		categories: any[];
 		budget: any;
@@ -78,6 +80,7 @@ export default function RootNavigator() {
 					<Stack.Screen name="Tabs" component={Tabs} />
 					<Stack.Screen name="Budgets" component={BudgetsScreen} />
 					<Stack.Screen name="SavingsGoals" component={SavingsGoalsScreen} />
+					<Stack.Screen name="RecurringExpenses" component={RecurringExpensesScreen} />
 					<Stack.Screen name="BudgetCreate" component={BudgetCreateScreen} />
 					<Stack.Screen name="BudgetDetail" component={BudgetDetailScreen} />
 					<Stack.Screen name="BudgetHistory" component={BudgetHistoryScreen} />

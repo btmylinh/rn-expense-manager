@@ -2,8 +2,8 @@ import React from 'react';
 import { View, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Card, Text, ProgressBar } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useAppTheme } from '../theme';
-import { StreakState, StreakStatus, getStreakMessage } from '../utils/streakHelpers';
+import { useAppTheme } from '../../theme';
+import { StreakState, StreakStatus, getStreakMessage } from '../../utils/streakHelpers';
 
 interface StreakCardProps {
   streakStatus: StreakStatus | null;

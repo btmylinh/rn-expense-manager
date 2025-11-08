@@ -6,21 +6,29 @@ import {
   ScrollView,
   TouchableOpacity,
   Dimensions,
+  Animated,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import { Card, Chip } from 'react-native-paper';
+import { Card, Button, FAB } from 'react-native-paper';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BarChart, PieChart } from 'react-native-gifted-charts';
 import { useAppTheme, getIconColor } from '../../theme';
 import { formatCurrency } from '../../utils/format';
 import { fakeApi } from '../../services/fakeApi';
 import AppBar from '../../components/AppBar';
 import NotificationBell from '../../components/NotificationBell';
-import StreakCard from '../../components/StreakCard';
+import StreakCard from '../../components/dashboard/StreakCard';
 import { StreakWarningModal, StreakLostModal, StreakMilestoneModal } from '../../components/StreakModals';
 import { getStreakState, StreakState } from '../../utils/streakHelpers';
 import { useAuth } from '../../contexts/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import RecurringExpensesWidget from '../../components/dashboard/RecurringExpensesWidget';
+import SummaryWidget from '../../components/dashboard/SummaryWidget';
+import ExpenseChartWidget from '../../components/dashboard/ExpenseChartWidget';
+import CategoryChartWidget from '../../components/dashboard/CategoryChartWidget';
+import TopCategoriesWidget from '../../components/dashboard/TopCategoriesWidget';
+import RecentTransactionsWidget from '../../components/dashboard/RecentTransactionsWidget';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
@@ -37,6 +45,10 @@ export default function DashboardScreen({ navigation }: any) {
   const theme = useAppTheme();
   const { user } = useAuth();
   const userId = user?.id || 1;
+  const insets = useSafeAreaInsets();
+  
+  // Animation for AI Assistant FAB
+  const shakeAnimation = useRef(new Animated.Value(0)).current;
 
   // State
   const [timeRange, setTimeRange] = useState<'week' | 'month'>('week');
@@ -77,6 +89,9 @@ export default function DashboardScreen({ navigation }: any) {
       // Check for streak warnings and reminders
       fakeApi.checkStreakWarnings().catch(console.error);
       fakeApi.checkDailyReminders().catch(console.error);
+      
+      // Check for recurring expense reminders
+      fakeApi.checkRecurringExpenseReminders(userId).catch(console.error);
     }, [timeRange, userId])
   );
 
@@ -218,6 +233,41 @@ export default function DashboardScreen({ navigation }: any) {
   // State for changes data
   const [changesData, setChangesData] = useState<{income: number, expense: number}>({income: 0, expense: 0});
 
+  // Shake animation effect
+  useEffect(() => {
+    const startShakeAnimation = () => {
+      Animated.sequence([
+        Animated.timing(shakeAnimation, {
+          toValue: 10,
+          duration: 100,
+          useNativeDriver: true,
+        }),
+        Animated.timing(shakeAnimation, {
+          toValue: -10,
+          duration: 100,
+          useNativeDriver: true,
+        }),
+        Animated.timing(shakeAnimation, {
+          toValue: 10,
+          duration: 100,
+          useNativeDriver: true,
+        }),
+        Animated.timing(shakeAnimation, {
+          toValue: 0,
+          duration: 100,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        // Repeat after 3 seconds
+        setTimeout(startShakeAnimation, 3000);
+      });
+    };
+
+    // Start animation after initial delay
+    const timer = setTimeout(startShakeAnimation, 2000);
+    return () => clearTimeout(timer);
+  }, [shakeAnimation]);
+
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <AppBar 
@@ -254,297 +304,87 @@ export default function DashboardScreen({ navigation }: any) {
           </View>
         )}
 
+        {/* Recurring Expenses Widget */}
+        <RecurringExpensesWidget />
+
         {/* Time Range Selector */}
         <View style={styles.timeRangeSelector}>
-          <Chip
-            selected={timeRange === 'week'}
+          <TouchableOpacity
             onPress={() => setTimeRange('week')}
-            style={styles.timeChip}
-            selectedColor={theme.colors.primary}
+            style={[
+              styles.timeButton,
+              {
+                backgroundColor: timeRange === 'week' 
+                  ? theme.colors.primary 
+                  : theme.colors.surfaceVariant,
+              }
+            ]}
           >
-            Tuần
-          </Chip>
-          <Chip
-            selected={timeRange === 'month'}
+            <Text style={[
+              styles.timeButtonText,
+              {
+                color: timeRange === 'week'
+                  ? '#FFFFFF'
+                  : theme.colors.onSurfaceVariant,
+                fontWeight: timeRange === 'week' ? '600' : '500',
+              }
+            ]}>
+              Tuần
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
             onPress={() => setTimeRange('month')}
-            style={styles.timeChip}
-            selectedColor={theme.colors.primary}
+            style={[
+              styles.timeButton,
+              {
+                backgroundColor: timeRange === 'month' 
+                  ? theme.colors.primary 
+                  : theme.colors.surfaceVariant,
+              }
+            ]}
           >
-            Tháng
-          </Chip>
+            <Text style={[
+              styles.timeButtonText,
+              {
+                color: timeRange === 'month'
+                  ? '#FFFFFF'
+                  : theme.colors.onSurfaceVariant,
+                fontWeight: timeRange === 'month' ? '600' : '500',
+              }
+            ]}>
+              Tháng
+            </Text>
+          </TouchableOpacity>
         </View>
 
-        {/* Summary Cards */}
-        <View style={styles.summaryCards}>
-          {/* Income Card */}
-          <Card style={[styles.summaryCard, { backgroundColor: theme.colors.surface }]}>
-            <Card.Content>
-              <View style={styles.summaryCardHeader}>
-                <Text style={[styles.summaryLabel, { color: theme.colors.onSurfaceVariant }]}>
-                  Thu nhập
-                </Text>
-                <MaterialCommunityIcons name="trending-up" size={20} color="#22C55E" />
-              </View>
-              <Text style={[styles.summaryAmount, { color: '#22C55E' }]}>
-                {currentStats ? formatCurrency(currentStats.income) : '0 ₫'}
-              </Text>
-              {changesData.income !== 0 && (
-                <Text style={[styles.summaryChange, { color: changesData.income > 0 ? '#22C55E' : '#EF4444' }]}>
-                  {changesData.income > 0 ? '↑' : '↓'} {Math.abs(changesData.income).toFixed(1)}% so với {timeRange === 'week' ? 'tuần trước' : 'tháng trước'}
-                </Text>
-              )}
-            </Card.Content>
-          </Card>
+        {/* Summary Widget */}
+        <SummaryWidget
+          income={currentStats?.income || 0}
+          expense={currentStats?.expense || 0}
+          incomeChange={changesData.income}
+          expenseChange={changesData.expense}
+          timeRange={timeRange}
+        />
 
-          {/* Expense Card */}
-          <Card style={[styles.summaryCard, { backgroundColor: theme.colors.surface }]}>
-            <Card.Content>
-              <View style={styles.summaryCardHeader}>
-                <Text style={[styles.summaryLabel, { color: theme.colors.onSurfaceVariant }]}>
-                  Chi tiêu
-                </Text>
-                <MaterialCommunityIcons name="trending-down" size={20} color="#EF4444" />
-              </View>
-              <Text style={[styles.summaryAmount, { color: '#EF4444' }]}>
-                {currentStats ? formatCurrency(currentStats.expense) : '0 ₫'}
-              </Text>
-              {changesData.expense !== 0 && (
-                <Text style={[styles.summaryChange, { color: changesData.expense > 0 ? '#EF4444' : '#22C55E' }]}>
-                  {changesData.expense > 0 ? '↑' : '↓'} {Math.abs(changesData.expense).toFixed(1)}% so với {timeRange === 'week' ? 'tuần trước' : 'tháng trước'}
-                </Text>
-              )}
-            </Card.Content>
-          </Card>
+        {/* Expense Chart Widget */}
+        <ExpenseChartWidget
+          data={barChartData}
+          currentExpense={currentStats?.expense || 0}
+          previousExpense={previousStats?.expense || 0}
+          dateRange={formatDateRange()}
+        />
 
-        </View>
+        {/* Category Chart Widget */}
+        <CategoryChartWidget
+          data={pieChartData}
+          totalAmount={topCategories.reduce((sum, cat) => sum + cat.amount, 0)}
+        />
 
-        {/* Bar Chart - Expense Comparison */}
-        <Card style={[styles.chartCard, { backgroundColor: theme.colors.surface }]}>
-          <Card.Content>
-            <Text style={[styles.chartTitle, { color: theme.colors.onSurface }]}>
-              So sánh chi tiêu
-            </Text>
-            <Text style={[styles.chartSubtitle, { color: theme.colors.onSurfaceVariant }]}>
-              {formatDateRange()}
-            </Text>
-            {barChartData.length > 0 ? (
-              <View style={styles.chartWrapper}>
-                <BarChart
-                  data={barChartData}
-                  width={SCREEN_WIDTH - 120}
-                  height={280}
-                  spacing={80}
-                  barWidth={60}
-                  barBorderRadius={10}
-                  noOfSections={5}
-                  maxValue={Math.max(
-                    currentStats?.expense || 0,
-                    previousStats?.expense || 0
-                  ) * 1.2}
-                  yAxisThickness={1}
-                  xAxisThickness={1}
-                  yAxisTextStyle={{ color: theme.colors.onSurfaceVariant, fontSize: 13 }}
-                  xAxisLabelTextStyle={{ color: theme.colors.onSurfaceVariant, fontSize: 14, fontWeight: 'bold' }}
-                  showGradient={false}
-                  isAnimated
-                  animationDuration={800}
-                  backgroundColor={theme.colors.surface}
-                  rulesColor={theme.colors.outline}
-                  rulesType="solid"
-                />
-              </View>
-            ) : (
-              <View style={styles.emptyChart}>
-                <View style={styles.emptyIconWrapper}>
-                  <MaterialCommunityIcons name="chart-bar" size={48} color={theme.colors.onSurfaceVariant} />
-                </View>
-                <Text style={[styles.emptyChartText, { color: theme.colors.onSurface, fontWeight: '600', marginBottom: 4 }]}>
-                  Hãy bắt đầu ghi chép!
-                </Text>
-                <Text style={[styles.emptyChartSubtext, { color: theme.colors.onSurfaceVariant, fontSize: 13 }]}>
-                  Thêm giao dịch để xem biểu đồ chi tiêu
-                </Text>
-              </View>
-            )}
-          </Card.Content>
-        </Card>
+        {/* Top Categories Widget */}
+        <TopCategoriesWidget categories={topCategories} />
 
-        {/* Pie Chart - Category Distribution */}
-        <Card style={[styles.chartCard, { backgroundColor: theme.colors.surface }]}>
-          <Card.Content>
-            <Text style={[styles.chartTitle, { color: theme.colors.onSurface }]}>
-              Chi tiêu theo danh mục
-            </Text>
-            {pieChartData.length > 0 ? (
-              <View style={styles.pieChartContainer}>
-                <PieChart
-                  data={pieChartData}
-                  radius={100}
-                  innerRadius={50}
-                  innerCircleColor={theme.colors.surface}
-                  centerLabelComponent={() => {
-                    const total = topCategories.reduce((sum, cat) => sum + cat.amount, 0);
-                    return (
-                      <View style={styles.centerLabel}>
-                        <Text style={[styles.centerLabelText, { color: theme.colors.onSurface }]}>
-                          {formatCurrency(total)}
-                        </Text>
-                        <Text style={[styles.centerLabelSubtext, { color: theme.colors.onSurfaceVariant }]}>
-                          Tổng chi
-                        </Text>
-                      </View>
-                    );
-                  }}
-                />
-                <View style={styles.pieChartLegend}>
-                  {pieChartData.map((item, index) => {
-                    return (
-                      <View key={item.category.id} style={styles.legendItem}>
-                        <View style={[styles.legendColor, { backgroundColor: item.color }]} />
-                        <MaterialCommunityIcons
-                          name={(item.category.icon as any) || 'tag-outline'}
-                          size={16}
-                          color={getIconColor(item.category.icon, theme)}
-                          style={styles.legendIcon}
-                        />
-                        <Text style={[styles.legendText, { color: theme.colors.onSurface }]} numberOfLines={1}>
-                          {item.category.name}
-                        </Text>
-                        <Text style={[styles.legendAmount, { color: theme.colors.onSurfaceVariant }]}>
-                          {item.text}
-                        </Text>
-                      </View>
-                    );
-                  })}
-                </View>
-              </View>
-            ) : (
-              <View style={styles.emptyChart}>
-                <View style={styles.emptyIconWrapper}>
-                  <MaterialCommunityIcons name="chart-donut" size={48} color={theme.colors.onSurfaceVariant} />
-                </View>
-                <Text style={[styles.emptyChartText, { color: theme.colors.onSurface, fontWeight: '600', marginBottom: 4 }]}>
-                  Khám phá chi tiêu của bạn
-                </Text>
-                <Text style={[styles.emptyChartSubtext, { color: theme.colors.onSurfaceVariant, fontSize: 13 }]}>
-                  Ghi chép để phân tích theo danh mục
-                </Text>
-              </View>
-            )}
-          </Card.Content>
-        </Card>
-
-        {/* Top 3 Categories */}
-        <Card style={[styles.listCard, { backgroundColor: theme.colors.surface }]}>
-          <Card.Content>
-            <View style={styles.listHeader}>
-              <MaterialCommunityIcons name="trophy" size={24} color={theme.colors.primary} />
-              <Text style={[styles.listTitle, { color: theme.colors.onSurface }]}>
-                Top 3 danh mục chi tiêu
-              </Text>
-            </View>
-            {topCategories.length > 0 ? (
-              <View style={styles.categoryList}>
-                {topCategories.map((item, index) => {
-                  const categoryColor = getIconColor(item.category.icon, theme);
-                  return (
-                    <View key={item.category.id} style={styles.categoryItem}>
-                      <View style={styles.categoryRank}>
-                        <Text style={[styles.rankText, { color: theme.colors.onSurfaceVariant }]}>
-                          #{index + 1}
-                        </Text>
-                      </View>
-                      <View style={[styles.categoryIcon, { backgroundColor: categoryColor + '22' }]}>
-                        <MaterialCommunityIcons
-                          name={(item.category.icon as any) || 'tag-outline'}
-                          size={24}
-                          color={categoryColor}
-                        />
-                      </View>
-                      <View style={styles.categoryInfo}>
-                        <Text style={[styles.categoryName, { color: theme.colors.onSurface }]}>
-                          {item.category.name}
-                        </Text>
-                      </View>
-                      <Text style={[styles.categoryAmount, { color: theme.colors.error }]}>
-                        {formatCurrency(item.amount)}
-                      </Text>
-                    </View>
-                  );
-                })}
-              </View>
-            ) : (
-              <View style={styles.emptyList}>
-                <View style={styles.emptyIconWrapper}>
-                  <MaterialCommunityIcons name="trophy-outline" size={40} color={theme.colors.onSurfaceVariant} />
-                </View>
-                <Text style={[styles.emptyText, { color: theme.colors.onSurface, fontWeight: '600', marginBottom: 4 }]}>
-                  Hãy bắt đầu ghi chép!
-                </Text>
-                <Text style={[styles.emptySubtext, { color: theme.colors.onSurfaceVariant, fontSize: 13 }]}>
-                  Thêm giao dịch để xem thống kê
-                </Text>
-              </View>
-            )}
-          </Card.Content>
-        </Card>
-
-        {/* Recent Transactions */}
-        <Card style={[styles.listCard, { backgroundColor: theme.colors.surface }]}>
-          <Card.Content>
-            <View style={styles.listHeader}>
-              <MaterialCommunityIcons name="clock-outline" size={24} color={theme.colors.primary} />
-              <Text style={[styles.listTitle, { color: theme.colors.onSurface }]}>
-                Giao dịch gần đây
-              </Text>
-            </View>
-            {recentTransactions.length > 0 ? (
-              <View style={styles.transactionList}>
-                {recentTransactions.map((tx) => {
-                  const categoryColor = getIconColor(tx.category?.icon, theme);
-
-                  return (
-                    <View key={tx.id} style={styles.transactionItem}>
-                      <View style={[styles.transactionIcon, { backgroundColor: categoryColor + '22' }]}>
-                        <MaterialCommunityIcons
-                          name={(tx.category?.icon as any) || 'tag-outline'}
-                          size={20}
-                          color={categoryColor}
-                        />
-                      </View>
-                      <View style={styles.transactionInfo}>
-                        <Text style={[styles.transactionTitle, { color: theme.colors.onSurface }]} numberOfLines={1}>
-                          {tx.title}
-                        </Text>
-                        <Text style={[styles.transactionMeta, { color: theme.colors.onSurfaceVariant }]}>
-                          {tx.category?.name} • {tx.formattedDate}
-                        </Text>
-                      </View>
-                      <Text style={[
-                        styles.transactionAmount,
-                        { color: tx.isIncome ? '#22C55E' : '#EF4444' }
-                      ]}>
-                        {tx.isIncome ? '+' : '-'}{formatCurrency(tx.displayAmount)}
-                      </Text>
-                    </View>
-                  );
-                })}
-              </View>
-            ) : (
-              <View style={styles.emptyList}>
-                <View style={styles.emptyIconWrapper}>
-                  <MaterialCommunityIcons name="clock-outline" size={40} color={theme.colors.onSurfaceVariant} />
-                </View>
-                <Text style={[styles.emptyText, { color: theme.colors.onSurface, fontWeight: '600', marginBottom: 4 }]}>
-                  Bắt đầu hành trình của bạn
-                </Text>
-                <Text style={[styles.emptySubtext, { color: theme.colors.onSurfaceVariant, fontSize: 13 }]}>
-                  Nhấn "+" để thêm giao dịch đầu tiên
-                </Text>
-              </View>
-            )}
-          </Card.Content>
-        </Card>
+        {/* Recent Transactions Widget */}
+        <RecentTransactionsWidget transactions={recentTransactions} />
       </ScrollView>
 
       {/* Streak Modals */}
@@ -581,6 +421,31 @@ export default function DashboardScreen({ navigation }: any) {
           />
         </>
       )}
+
+      {/* AI Assistant FAB */}
+      <Animated.View
+        style={[
+          styles.fabContainer,
+          {
+            bottom: insets.bottom,
+            transform: [{ rotate: shakeAnimation.interpolate({
+              inputRange: [-10, 10],
+              outputRange: ['-5deg', '5deg'],
+            })}],
+          },
+        ]}
+      >
+        <FAB
+          icon="robot"
+          style={[
+            styles.fab,
+            {
+              backgroundColor: theme.colors.primary,
+            },
+          ]}
+          onPress={() => navigation.navigate('Chatbot')}
+        />
+      </Animated.View>
     </View>
   );
 }
@@ -597,8 +462,16 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 12,
   },
-  timeChip: {
-    marginRight: 8,
+  timeButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timeButtonText: {
+    fontSize: 15,
   },
   summaryCards: {
     flexDirection: 'row',
@@ -802,5 +675,18 @@ const styles = StyleSheet.create({
   emptyIconWrapper: {
     opacity: 0.3,
     marginBottom: 8,
+  },
+  fabContainer: {
+    position: 'absolute',
+    right: 16,
+    zIndex: 1000,
+  },
+  fab: {
+    borderRadius: 28,
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
   },
 });

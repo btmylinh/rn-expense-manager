@@ -15,7 +15,6 @@ import {
   Menu,
   Portal,
   Modal,
-  Chip,
 } from 'react-native-paper';
 import { DatePickerModal } from 'react-native-paper-dates';
 import { useAppTheme, getIconColor } from '../../theme';
@@ -309,14 +308,23 @@ export default function TransactionsScreen({ navigation }: any) {
             visible={showDatePicker}
             onDismiss={() => setShowDatePicker(false)}
             anchor={
-              <Chip
-                icon="calendar-range"
+              <TouchableOpacity
                 onPress={() => setShowDatePicker(true)}
-                style={styles.filterChip}
-                textStyle={styles.filterChipText}
+                style={[
+                  styles.filterButton,
+                  { backgroundColor: theme.colors.surfaceVariant }
+                ]}
               >
-                {formatDateRange()}
-              </Chip>
+                <MaterialCommunityIcons 
+                  name="calendar-range" 
+                  size={16} 
+                  color={theme.colors.onSurfaceVariant} 
+                  style={styles.filterButtonIcon}
+                />
+                <Text style={[styles.filterButtonText, { color: theme.colors.onSurfaceVariant }]}>
+                  {formatDateRange()}
+                </Text>
+              </TouchableOpacity>
             }
           >
             <Menu.Item
@@ -361,14 +369,23 @@ export default function TransactionsScreen({ navigation }: any) {
             visible={showCategoryMenu}
             onDismiss={() => setShowCategoryMenu(false)}
             anchor={
-              <Chip
-                icon={selectedCategory ? selectedCategory.icon : 'tag-outline'}
+              <TouchableOpacity
                 onPress={() => setShowCategoryMenu(true)}
-                style={styles.filterChip}
-                textStyle={styles.filterChipText}
+                style={[
+                  styles.filterButton,
+                  { backgroundColor: theme.colors.surfaceVariant }
+                ]}
               >
-                {selectedCategory?.name || 'Tất cả danh mục'}
-              </Chip>
+                <MaterialCommunityIcons 
+                  name={(selectedCategory?.icon as any) || 'tag-outline'} 
+                  size={16} 
+                  color={theme.colors.onSurfaceVariant} 
+                  style={styles.filterButtonIcon}
+                />
+                <Text style={[styles.filterButtonText, { color: theme.colors.onSurfaceVariant }]}>
+                  {selectedCategory?.name || 'Tất cả danh mục'}
+                </Text>
+              </TouchableOpacity>
             }
           >
             <Menu.Item
@@ -396,14 +413,23 @@ export default function TransactionsScreen({ navigation }: any) {
             visible={showWalletMenu}
             onDismiss={() => setShowWalletMenu(false)}
             anchor={
-              <Chip
-                icon="wallet-outline"
+              <TouchableOpacity
                 onPress={() => setShowWalletMenu(true)}
-                style={styles.filterChip}
-                textStyle={styles.filterChipText}
+                style={[
+                  styles.filterButton,
+                  { backgroundColor: theme.colors.surfaceVariant }
+                ]}
               >
-                {selectedWallet?.name || 'Tất cả ví'}
-              </Chip>
+                <MaterialCommunityIcons 
+                  name="wallet-outline" 
+                  size={16} 
+                  color={theme.colors.onSurfaceVariant} 
+                  style={styles.filterButtonIcon}
+                />
+                <Text style={[styles.filterButtonText, { color: theme.colors.onSurfaceVariant }]}>
+                  {selectedWallet?.name || 'Tất cả ví'}
+                </Text>
+              </TouchableOpacity>
             }
           >
             <Menu.Item
@@ -427,8 +453,7 @@ export default function TransactionsScreen({ navigation }: any) {
 
           {/* Clear Filters */}
           {(filter.startDate || filter.endDate || filter.categoryId || filter.walletId) && (
-            <Chip
-              icon="close-circle"
+            <TouchableOpacity
               onPress={() => {
                 setFilter({
                   startDate: null,
@@ -438,11 +463,21 @@ export default function TransactionsScreen({ navigation }: any) {
                 });
                 setSearchQuery('');
               }}
-              style={[styles.filterChip, { backgroundColor: theme.colors.errorContainer }]}
-              textStyle={[styles.filterChipText, { color: theme.colors.onErrorContainer }]}
+              style={[
+                styles.filterButton,
+                { backgroundColor: theme.colors.errorContainer }
+              ]}
             >
-              Xóa bộ lọc
-            </Chip>
+              <MaterialCommunityIcons 
+                name="close-circle" 
+                size={16} 
+                color={theme.colors.onErrorContainer} 
+                style={styles.filterButtonIcon}
+              />
+              <Text style={[styles.filterButtonText, { color: theme.colors.onErrorContainer }]}>
+                Xóa bộ lọc
+              </Text>
+            </TouchableOpacity>
           )}
         </ScrollView>
       </View>
@@ -620,12 +655,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginTop: 8,
   },
-  filterChip: {
+  filterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 12,
     marginRight: 8,
     marginBottom: 8,
   },
-  filterChipText: {
-    fontSize: 12,
+  filterButtonIcon: {
+    marginRight: 6,
+  },
+  filterButtonText: {
+    fontSize: 13,
+    fontWeight: '500',
   },
   content: {
     flex: 1,

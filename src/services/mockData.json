@@ -519,7 +519,235 @@
       "created_at": "2025-11-05T00:00:00.000Z"
     }
   ],
-  "currentWalletByUser": { "1": 1 }
+  "currentWalletByUser": { "1": 1 },
+  "recurring_expenses": [
+    {
+      "id": 1,
+      "user_id": 1,
+      "name": "Tiền thuê nhà",
+      "amount": 5000000,
+      "category_id": 6,
+      "frequency": "monthly",
+      "next_due_date": "2025-12-05",
+      "is_active": true,
+      "is_auto_detected": true,
+      "confidence": 95,
+      "reminder_days_before": 3,
+      "note": "Thanh toán tiền thuê nhà hàng tháng - Phát hiện tự động từ 6 giao dịch",
+      "created_at": "2025-01-01T00:00:00.000Z",
+      "updated_at": "2025-11-08T00:00:00.000Z"
+    },
+    {
+      "id": 2,
+      "user_id": 1,
+      "name": "Tiền điện",
+      "amount": 450000,
+      "category_id": 9,
+      "frequency": "monthly",
+      "next_due_date": "2025-12-15",
+      "is_active": true,
+      "is_auto_detected": true,
+      "confidence": 88,
+      "reminder_days_before": 2,
+      "note": "Hóa đơn tiền điện hàng tháng - Phát hiện tự động từ 5 giao dịch",
+      "created_at": "2025-01-01T00:00:00.000Z",
+      "updated_at": "2025-11-08T00:00:00.000Z"
+    },
+    {
+      "id": 3,
+      "user_id": 1,
+      "name": "Netflix Premium",
+      "amount": 260000,
+      "category_id": 8,
+      "frequency": "monthly",
+      "next_due_date": "2025-12-10",
+      "is_active": true,
+      "is_auto_detected": false,
+      "confidence": 100,
+      "reminder_days_before": 1,
+      "note": "Đăng ký Netflix Premium - Thêm thủ công",
+      "created_at": "2025-02-10T00:00:00.000Z",
+      "updated_at": "2025-11-08T00:00:00.000Z"
+    },
+    {
+      "id": 4,
+      "user_id": 1,
+      "name": "Bảo hiểm xe máy",
+      "amount": 350000,
+      "category_id": 5,
+      "frequency": "monthly",
+      "next_due_date": "2025-12-20",
+      "is_active": true,
+      "is_auto_detected": false,
+      "confidence": 100,
+      "reminder_days_before": 5,
+      "note": "Bảo hiểm xe máy hàng tháng - Thêm thủ công",
+      "created_at": "2025-03-01T00:00:00.000Z",
+      "updated_at": "2025-11-08T00:00:00.000Z"
+    },
+    {
+      "id": 5,
+      "user_id": 1,
+      "name": "Tiền nước",
+      "amount": 120000,
+      "category_id": 9,
+      "frequency": "monthly",
+      "next_due_date": "2025-12-18",
+      "is_active": true,
+      "is_auto_detected": true,
+      "confidence": 92,
+      "reminder_days_before": 2,
+      "note": "Hóa đơn tiền nước - Phát hiện tự động từ 4 giao dịch",
+      "created_at": "2025-01-01T00:00:00.000Z",
+      "updated_at": "2025-11-08T00:00:00.000Z"
+    },
+    {
+      "id": 6,
+      "user_id": 1,
+      "name": "Internet FPT",
+      "amount": 200000,
+      "category_id": 9,
+      "frequency": "monthly",
+      "next_due_date": "2025-12-01",
+      "is_active": true,
+      "is_auto_detected": true,
+      "confidence": 96,
+      "reminder_days_before": 3,
+      "note": "Cước internet hàng tháng - Phát hiện tự động từ 8 giao dịch",
+      "created_at": "2025-01-01T00:00:00.000Z",
+      "updated_at": "2025-11-08T00:00:00.000Z"
+    },
+    {
+      "id": 7,
+      "user_id": 1,
+      "name": "Spotify Premium",
+      "amount": 59000,
+      "category_id": 8,
+      "frequency": "monthly",
+      "next_due_date": "2025-12-12",
+      "is_active": false,
+      "is_auto_detected": false,
+      "confidence": 100,
+      "reminder_days_before": 1,
+      "note": "Đăng ký Spotify - Đã tạm dừng",
+      "created_at": "2025-04-12T00:00:00.000Z",
+      "updated_at": "2025-10-15T00:00:00.000Z"
+    }
+  ],
+  "recurring_expense_detected_patterns": [
+    {
+      "user_id": 1,
+      "name": "Cà phê sáng",
+      "amount": 25000,
+      "category_id": 4,
+      "frequency": "daily",
+      "confidence": 78,
+      "occurrences": 15,
+      "next_due_date": "2025-11-09",
+      "transaction_ids": [101, 105, 109, 113, 117, 121, 125, 129, 133, 137, 141, 145, 149, 153, 157],
+      "note": "Pattern phát hiện: Mua cà phê mỗi sáng"
+    },
+    {
+      "user_id": 1,
+      "name": "Grab đi làm",
+      "amount": 35000,
+      "category_id": 5,
+      "frequency": "weekly",
+      "confidence": 82,
+      "occurrences": 8,
+      "next_due_date": "2025-11-11",
+      "transaction_ids": [102, 110, 118, 126, 134, 142, 150, 158],
+      "note": "Pattern phát hiện: Đi Grab mỗi thứ 2"
+    },
+    {
+      "user_id": 1,
+      "name": "Gym membership",
+      "amount": 500000,
+      "category_id": 10,
+      "frequency": "monthly",
+      "confidence": 94,
+      "occurrences": 6,
+      "next_due_date": "2025-12-01",
+      "transaction_ids": [103, 111, 119, 127, 135, 143],
+      "note": "Pattern phát hiện: Phí gym hàng tháng"
+    }
+  ],
+  "recurring_expense_predictions": {
+    "user_id": 1,
+    "month": "2025-12",
+    "total_amount": 6439000,
+    "total_count": 6,
+    "by_category": {
+      "Nhà cửa": 5000000,
+      "Hóa đơn - dịch vụ": 770000,
+      "Giải trí": 260000,
+      "Di chuyển": 350000,
+      "Sức khỏe": 59000
+    },
+    "predictions": [
+      {
+        "id": 1001,
+        "name": "Internet FPT",
+        "amount": 200000,
+        "category_id": 9,
+        "category_name": "Hóa đơn - dịch vụ",
+        "due_date": "2025-12-01",
+        "confidence": 96,
+        "frequency": "monthly"
+      },
+      {
+        "id": 1002,
+        "name": "Tiền thuê nhà",
+        "amount": 5000000,
+        "category_id": 6,
+        "category_name": "Nhà cửa",
+        "due_date": "2025-12-05",
+        "confidence": 95,
+        "frequency": "monthly"
+      },
+      {
+        "id": 1003,
+        "name": "Netflix Premium",
+        "amount": 260000,
+        "category_id": 8,
+        "category_name": "Giải trí",
+        "due_date": "2025-12-10",
+        "confidence": 100,
+        "frequency": "monthly"
+      },
+      {
+        "id": 1004,
+        "name": "Tiền điện",
+        "amount": 450000,
+        "category_id": 9,
+        "category_name": "Hóa đơn - dịch vụ",
+        "due_date": "2025-12-15",
+        "confidence": 88,
+        "frequency": "monthly"
+      },
+      {
+        "id": 1005,
+        "name": "Tiền nước",
+        "amount": 120000,
+        "category_id": 9,
+        "category_name": "Hóa đơn - dịch vụ",
+        "due_date": "2025-12-18",
+        "confidence": 92,
+        "frequency": "monthly"
+      },
+      {
+        "id": 1006,
+        "name": "Bảo hiểm xe máy",
+        "amount": 350000,
+        "category_id": 5,
+        "category_name": "Di chuyển",
+        "due_date": "2025-12-20",
+        "confidence": 100,
+        "frequency": "monthly"
+      }
+    ],
+    "generated_at": "2025-11-08T00:00:00.000Z"
+  }
 }
 
 

@@ -17,6 +17,32 @@ let streakHistory: Array<{id: number, userId: number, date: string, hasActivity:
 let streakSettings: Array<{id: number, userId: number, dailyReminderEnabled?: boolean, daily_reminder_enabled?: boolean, reminderTime?: string, reminder_time?: string, weekendMode?: boolean, weekend_mode?: boolean, freezeAvailable?: number, freeze_available?: number, freezeUsedThisWeek?: number, freeze_used_this_week?: number, bestStreak?: number, best_streak?: number, totalActiveDays?: number, total_active_days?: number, createdAt?: string, created_at?: string, updatedAt?: string, updated_at?: string}> = [];
 let savingsGoals: Array<{id: number, userId: number, name: string, targetAmount: number, currentAmount: number, deadline: string, icon: string, color: string, currency: string, status: string, createdAt: string, updatedAt: string}> = [];
 let savingsGoalContributions: Array<{id: number, goalId: number, amount: number, note: string, createdAt: string}> = [];
+
+// Recurring Expenses
+type RecurringFrequency = 'daily' | 'weekly' | 'monthly' | 'yearly';
+type RecurringPattern = {
+	id: number;
+	userId: number;
+	name: string;
+	amount: number;
+	categoryId: number;
+	categoryName?: string;
+	frequency: RecurringFrequency;
+	nextDueDate: string;
+	isActive: boolean;
+	isAutoDetected: boolean;
+	confidence: number; // 0-100, độ tin cậy của pattern (cho auto-detected)
+	reminderDaysBefore: number;
+	note?: string;
+	createdAt: string;
+	updatedAt: string;
+};
+
+// Recurring Expenses - Loaded from mockData.json
+let recurringExpenses: Array<RecurringPattern> = [];
+let recurringExpenseDetectedPatterns: Array<any> = []; // Patterns phát hiện tự động từ mockData
+let recurringExpensePredictions: any = null; // Dự báo đã tính sẵn từ mockData
+let recurringExpenseReminders: Array<{id: number, recurringExpenseId: number, userId: number, scheduledDate: string, isNotified: boolean, createdAt: string}> = [];
 type ChatRole = 'user' | 'assistant' | 'system';
 type FakeChatMessage = {
 	id: string;
@@ -208,6 +234,36 @@ try {
 			tags: Array.isArray(f.tags) ? f.tags : [],
 		}));
 	}
+	
+	// Load recurring expenses from mockData - Dữ liệu đã được mock sẵn
+	if (seed.recurring_expenses) {
+		recurringExpenses = seed.recurring_expenses.map((e: any) => ({
+			id: e.id,
+			userId: e.user_id,
+			name: e.name,
+			amount: e.amount,
+			categoryId: e.category_id,
+			frequency: e.frequency as RecurringFrequency,
+			nextDueDate: e.next_due_date,
+			isActive: e.is_active,
+			isAutoDetected: e.is_auto_detected,
+			confidence: e.confidence,
+			reminderDaysBefore: e.reminder_days_before,
+			note: e.note,
+			createdAt: e.created_at,
+			updatedAt: e.updated_at
+		}));
+	}
+	
+	// Load detected patterns from mockData - Patterns đã được phát hiện và mock sẵn
+	if (seed.recurring_expense_detected_patterns) {
+		recurringExpenseDetectedPatterns = seed.recurring_expense_detected_patterns;
+	}
+	
+	// Load predictions from mockData - Dự báo đã được tính toán và mock sẵn
+	if (seed.recurring_expense_predictions) {
+		recurringExpensePredictions = seed.recurring_expense_predictions;
+	}
 } catch {}
 
 // Calculate wallet balances from transactions + keep seeded starting amounts if present
@@ -221,6 +277,9 @@ const calculateWalletBalances = () => {
 };
 
 calculateWalletBalances();
+
+// Recurring expenses đã được load từ mockData.json
+// Không cần initialize nữa vì dữ liệu đã có sẵn trong mockData
 
 // Default categories with colors
 const defaultCategories = [
@@ -3453,6 +3512,290 @@ async resetStreak(userId: number) {
 				context: matchedFaq ? { matchedFaqId: matchedFaq.id } : undefined,
 			}
 		};
+	},
+
+	// ============ RECURRING EXPENSES ENDPOINTS ============
+	// Tất cả dữ liệu đều được mock sẵn trong mockData.json
+	// API chỉ lấy và trả về dữ liệu, không tính toán
+
+	/**
+	 * Phát hiện chi tiêu định kỳ - Dữ liệu đã được mock sẵn trong mockData.json
+	 * Mock data bao gồm: patterns đã được phát hiện với thuật toán phân tích giao dịch
+	 * - Nhóm giao dịch theo tên và danh mục
+	 * - Tính khoảng cách giữa các giao dịch
+	 * - Tính độ tin cậy (confidence) dựa trên tính nhất quán
+	 * - Phân loại: daily, weekly, monthly, yearly
+	 */
+	async detectRecurringExpenses(userId: number) {
+		await delay(800);
+		
+		// Lấy patterns đã được phát hiện và mock sẵn từ mockData
+		const userPatterns = recurringExpenseDetectedPatterns
+			.filter((p: any) => p.user_id === userId)
+			.map((p: any) => {
+				// Get category name
+				const category = userCategories.find(c => c.id === p.category_id) 
+					|| categories.find(c => c.id === p.category_id);
+				
+				return {
+					name: p.name,
+					amount: p.amount,
+					categoryId: p.category_id,
+					categoryName: category?.name || 'Khác',
+					frequency: p.frequency as RecurringFrequency,
+					confidence: p.confidence,
+					occurrences: p.occurrences,
+					nextDueDate: p.next_due_date,
+					transactions: p.transaction_ids.map((id: number) => {
+						const tx = transactions.find(t => t.id === id);
+						return tx ? {
+							id: tx.id,
+							date: tx.transactionDate,
+							amount: tx.amount
+						} : null;
+					}).filter((t: any) => t !== null)
+				};
+			});
+		
+		// Sort by confidence (highest first)
+		userPatterns.sort((a, b) => b.confidence - a.confidence);
+		
+		return { success: true, data: userPatterns };
+	},
+
+	/**
+	 * Lấy danh sách chi tiêu định kỳ - Dữ liệu từ mockData.json
+	 * Mock data bao gồm: chi tiêu định kỳ đã được tạo (cả tự động và thủ công)
+	 */
+	async getRecurringExpenses(userId: number) {
+		await delay(300);
+		
+		// Lấy chi tiêu định kỳ từ mockData đã load sẵn
+		const userExpenses = recurringExpenses.filter(e => e.userId === userId);
+		
+		// Enrich with category names từ user_categories trong mockData
+		const enrichedExpenses = userExpenses.map(expense => {
+			const category = userCategories.find(c => c.id === expense.categoryId) 
+				|| categories.find(c => c.id === expense.categoryId);
+			
+			return {
+				...expense,
+				categoryName: category?.name || 'Khác',
+				categoryIcon: category?.icon || 'help-circle-outline',
+				categoryColor: category?.color || '#6B7280'
+			};
+		});
+		
+		return { success: true, data: enrichedExpenses };
+	},
+
+	/**
+	 * Tạo chi tiêu định kỳ mới - Thêm vào runtime (không lưu vào mockData)
+	 * Note: Dữ liệu chỉ tồn tại trong session, reload app sẽ mất
+	 */
+	async createRecurringExpense(userId: number, data: {
+		name: string;
+		amount: number;
+		categoryId: number;
+		frequency: RecurringFrequency;
+		nextDueDate: string;
+		reminderDaysBefore?: number;
+		note?: string;
+	}) {
+		await delay(400);
+		
+		// Tạo ID mới dựa trên ID lớn nhất hiện có
+		const newExpense: RecurringPattern = {
+			id: recurringExpenses.length > 0 ? Math.max(...recurringExpenses.map(e => e.id)) + 1 : 1,
+			userId,
+			name: data.name,
+			amount: data.amount,
+			categoryId: data.categoryId,
+			frequency: data.frequency,
+			nextDueDate: data.nextDueDate,
+			isActive: true,
+			isAutoDetected: false, // Thêm thủ công
+			confidence: 100, // Manual entries có 100% confidence
+			reminderDaysBefore: data.reminderDaysBefore || 1,
+			note: data.note,
+			createdAt: new Date().toISOString(),
+			updatedAt: new Date().toISOString()
+		};
+		
+		// Thêm vào array runtime (không lưu vào mockData.json)
+		recurringExpenses.push(newExpense);
+		
+		// Tạo notification
+		notifications.push({
+			id: notifications.length + 1,
+			userId,
+			type: 'recurring_expense_created',
+			title: 'Chi tiêu định kỳ mới',
+			message: `Đã thêm chi tiêu định kỳ: ${data.name}`,
+			data: { recurringExpenseId: newExpense.id },
+			isRead: false,
+			createdAt: new Date().toISOString()
+		});
+		
+		return { success: true, data: newExpense };
+	},
+
+	/**
+	 * Cập nhật chi tiêu định kỳ - Cập nhật trong runtime
+	 * Note: Thay đổi chỉ tồn tại trong session
+	 */
+	async updateRecurringExpense(userId: number, expenseId: number, data: {
+		name?: string;
+		amount?: number;
+		categoryId?: number;
+		frequency?: RecurringFrequency;
+		nextDueDate?: string;
+		isActive?: boolean;
+		reminderDaysBefore?: number;
+		note?: string;
+	}) {
+		await delay(400);
+		
+		const expenseIndex = recurringExpenses.findIndex(e => e.id === expenseId && e.userId === userId);
+		if (expenseIndex === -1) {
+			return { success: false, message: 'Không tìm thấy chi tiêu định kỳ' };
+		}
+		
+		// Cập nhật trong runtime array
+		const updatedExpense: RecurringPattern = {
+			...recurringExpenses[expenseIndex],
+			...data,
+			updatedAt: new Date().toISOString()
+		};
+		
+		recurringExpenses[expenseIndex] = updatedExpense;
+		
+		return { success: true, data: updatedExpense };
+	},
+
+	/**
+	 * Xóa chi tiêu định kỳ - Xóa khỏi runtime
+	 * Note: Reload app sẽ khôi phục dữ liệu từ mockData
+	 */
+	async deleteRecurringExpense(userId: number, expenseId: number) {
+		await delay(300);
+		
+		const expenseIndex = recurringExpenses.findIndex(e => e.id === expenseId && e.userId === userId);
+		if (expenseIndex === -1) {
+			return { success: false, message: 'Không tìm thấy chi tiêu định kỳ' };
+		}
+		
+		// Xóa khỏi runtime array
+		recurringExpenses.splice(expenseIndex, 1);
+		
+		return { success: true, message: 'Đã xóa chi tiêu định kỳ' };
+	},
+
+	/**
+	 * Dự báo chi tiêu tháng tới - Dữ liệu đã được tính toán và mock sẵn trong mockData.json
+	 * Mock data bao gồm:
+	 * - Danh sách các khoản chi dự kiến trong tháng
+	 * - Tổng số tiền và số lượng khoản chi
+	 * - Phân loại theo danh mục
+	 * - Ngày đến hạn cụ thể cho mỗi khoản
+	 */
+	async predictNextMonthExpenses(userId: number) {
+		await delay(500);
+		
+		// Lấy dự báo đã được tính toán và mock sẵn từ mockData
+		if (!recurringExpensePredictions || recurringExpensePredictions.user_id !== userId) {
+			return {
+				success: true,
+				data: {
+					predictions: [],
+					summary: {
+						totalAmount: 0,
+						totalCount: 0,
+						byCategory: {},
+						month: new Date().toISOString().substring(0, 7)
+					}
+				}
+			};
+		}
+		
+		// Trả về dữ liệu dự báo đã được mock sẵn
+		return {
+			success: true,
+			data: {
+				predictions: recurringExpensePredictions.predictions,
+				summary: {
+					totalAmount: recurringExpensePredictions.total_amount,
+					totalCount: recurringExpensePredictions.total_count,
+					byCategory: recurringExpensePredictions.by_category,
+					month: recurringExpensePredictions.month
+				}
+			}
+		};
+	},
+
+	/**
+	 * Kiểm tra nhắc nhở chi tiêu định kỳ - Tính toán runtime dựa trên mockData
+	 * Tự động tạo notification cho chi tiêu sắp đến hạn
+	 * Logic:
+	 * - Lấy chi tiêu định kỳ active từ mockData
+	 * - Tính số ngày còn lại đến hạn
+	 * - Tạo notification nếu trong khoảng reminderDaysBefore
+	 */
+	async checkRecurringExpenseReminders(userId: number) {
+		await delay(200);
+		
+		const now = new Date();
+		// Lấy chi tiêu active từ mockData đã load
+		const activeExpenses = recurringExpenses.filter(e => e.userId === userId && e.isActive);
+		
+		const upcomingReminders: Array<{
+			expense: RecurringPattern;
+			daysUntilDue: number;
+		}> = [];
+		
+		activeExpenses.forEach(expense => {
+			const dueDate = new Date(expense.nextDueDate);
+			const diffTime = dueDate.getTime() - now.getTime();
+			const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+			
+			// Kiểm tra nếu trong khoảng nhắc nhở
+			if (diffDays >= 0 && diffDays <= expense.reminderDaysBefore) {
+				upcomingReminders.push({
+					expense,
+					daysUntilDue: diffDays
+				});
+				
+				// Kiểm tra đã tạo notification chưa (tránh trùng lặp)
+				const existingNotification = notifications.find(n => 
+					n.userId === userId && 
+					n.type === 'recurring_expense_reminder' &&
+					n.data?.recurringExpenseId === expense.id &&
+					n.data?.dueDate === expense.nextDueDate
+				);
+				
+				if (!existingNotification) {
+					// Tạo notification nhắc nhở
+					notifications.push({
+						id: notifications.length + 1,
+						userId,
+						type: 'recurring_expense_reminder',
+						title: 'Nhắc nhở chi tiêu định kỳ',
+						message: diffDays === 0 
+							? `Hôm nay đến hạn thanh toán: ${expense.name} (${expense.amount.toLocaleString('vi-VN')} đ)`
+							: `Còn ${diffDays} ngày đến hạn thanh toán: ${expense.name} (${expense.amount.toLocaleString('vi-VN')} đ)`,
+						data: { 
+							recurringExpenseId: expense.id,
+							dueDate: expense.nextDueDate
+						},
+						isRead: false,
+						createdAt: new Date().toISOString(),
+						scheduledFor: new Date().toISOString()
+					});
+				}
+			}
+		});
+		
+		return { success: true, data: upcomingReminders };
 	}
 };
 

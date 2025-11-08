@@ -64,6 +64,7 @@ export const lightTheme = {
 		secondary: colors.accent,
 		background: '#FFFFFF',
 		surface: '#FFFFFF',
+		surfaceVariant: colors.neutral[100],
 		outline: colors.neutral[300],
 		error: colors.error,
 		onPrimary: '#FFFFFF',

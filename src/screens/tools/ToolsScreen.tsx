@@ -65,20 +65,20 @@ export default function ToolsScreen() {
 			onPress: () => navigation.navigate('SavingsGoals')
 		},
 		{
+			id: 'recurring',
+			icon: 'repeat',
+			name: 'Chi tiêu định kỳ',
+			description: 'Dự báo & nhắc nhở chi tiêu',
+			color: '#F43F5E',
+			onPress: () => navigation.navigate('RecurringExpenses')
+		},
+		{
 			id: 'chatbot',
 			icon: 'robot-happy-outline',
 			name: 'Chatbot tài chính',
 			description: 'Hỏi đáp & gợi ý chi tiêu',
 			color: '#7C3AED',
 			onPress: () => navigation.navigate('Chatbot')
-		},
-		{
-			id: 'recommendations',
-			icon: 'lightbulb-outline',
-			name: 'Gợi ý tiết kiệm',
-			description: 'Phân tích và tiết kiệm',
-			color: '#FFC107',
-			onPress: () => console.log('Navigate to Recommendations') // TODO: Implement later
 		}
 	];
 
