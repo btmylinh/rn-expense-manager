@@ -564,7 +564,7 @@ export default function ReportExportScreen({ navigation }: any) {
 											color={theme.colors.onSurfaceVariant} 
 										/>
 										<Text style={[styles.previewListTitle, { color: theme.colors.onSurfaceVariant }]}>
-											Mẫu dữ liệu (hiển thị 5 giao dịch đầu tiên)
+											Mẫu dữ liệu - 5 giao dịch đầu tiên
 										</Text>
 									</View>
 									{previewData.data.slice(0, 5).map((tx: Transaction, index: number) => (
@@ -604,7 +604,7 @@ export default function ReportExportScreen({ navigation }: any) {
 													styles.previewListItemAmount,
 													{ color: tx.type === 1 ? '#22C55E' : '#EF4444' },
 												]}>
-													{tx.type === 1 ? '+' : '-'}{formatCurrency(tx.amount)}
+													{formatCurrency(tx.amount)}
 												</Text>
 											</View>
 										</View>

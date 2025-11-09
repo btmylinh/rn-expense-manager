@@ -1,0 +1,425 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/* ===== Enums khớp các cột ENUM đã mô tả ===== */
+
+enum NotificationStatus {
+  unread
+  read
+}
+
+enum ReportType {
+  monthly
+  weekly
+  custom
+}
+
+enum Currency {
+  VND
+  USD
+}
+
+enum Language {
+  vn
+  en
+}
+
+enum SavingsGoalStatus {
+  active
+  completed
+  cancelled
+}
+
+enum RecurringFrequency {
+  daily
+  weekly
+  monthly
+  yearly
+}
+
+enum ChatRole {
+  user
+  assistant
+  system
+}
+
+/* ===== 1. users ===== */
+
+model users {
+  id         Int      @id @default(autoincrement())
+  name       String   @db.VarChar(255)
+  email      String   @unique @db.VarChar(255)
+  password   String   @db.VarChar(255)
+  /// 1 = user, 2 = admin
+  role       Int      @default(1)
+  is_active   Int(1)   @default(0)
+  is_2fa   Int(1)   @default(0)
+  last_login DateTime
+  created_at DateTime @default(now()) @db.Timestamp(6)
+  updated_at DateTime @default(now()) @db.Timestamp(6)
+
+  // relations
+  user_category              user_category[]
+  wallets                    wallets[]
+  transactions               transactions[]
+  budgets                    budgets[]
+  streaks                    streaks[]
+  notifications              notifications[]
+  reports                    reports[]
+  log_user                   log_user[]
+  savings_goals              savings_goals[]
+  recurring_expenses         recurring_expenses[]
+  recurring_expense_reminders recurring_expense_reminders[]
+  chat_messages              chat_messages[]
+  notification_settings      notification_settings?
+  streak_history             streak_history[]
+  streak_settings            streak_settings?
+
+  @@map("users")
+}
+
+/* ===== 2. category ===== */
+
+model category {
+  id          Int      @id @default(autoincrement())
+  icon        String?  @db.VarChar(255)
+  name        String   @db.VarChar(255)
+  /// 1 = 'thu', 2 = 'chi'
+  type             Int
+
+  @@map("category")
+}
+
+/* ===== 3. user_category ===== */
+
+model user_category {
+  id          Int      @id @default(autoincrement())
+  user_id     Int
+  icon        String?  @db.VarChar(255)
+  name        String   @db.VarChar(255)
+  /// 1 = 'thu', 2 = 'chi'
+  type             Int
+  created_at  DateTime @default(now()) @db.Timestamp(6)
+  updated_at DateTime @default(now()) @db.Timestamp(6)
+
+  user users @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  // back-relations
+  transactions transactions[]
+  budgets      budgets[]
+  recurring_expenses recurring_expenses[]
+
+  @@map("user_category")
+}
+
+/* ===== 4. wallets ===== */
+
+model wallets {
+  id         Int      @id @default(autoincrement())
+  user_id    Int
+  name       String   @db.VarChar(100)      
+  amount     Int
+  currency   String   @db.VarChar(5) @default("VND")
+  is_default Int(1)   
+  created_at DateTime @default(now()) @db.Timestamp(6)
+  updated_at DateTime @default(now()) @db.Timestamp(6)
+
+  user users @relation(fields: [user_id], references: [id])
+
+  // back-relations
+  transactions transactions[]
+  budgets budgets[]
+  recurring_expenses recurring_expenses[]
+
+  @@map("wallets")
+}
+
+/* ===== 5. transactions ===== */
+
+model transactions {
+  id               Int      @id @default(autoincrement())
+  user_id          Int
+  wallet_id        Int
+  user_category_id Int
+  amount           Int
+  transaction_date DateTime @db.Date
+  content             String?  @db.Text
+  /// 1 = 'thu', 2 = 'chi'
+  type             Int
+  created_at DateTime @default(now()) @db.Timestamp(6)
+  updated_at DateTime @default(now()) @db.Timestamp(6)
+
+  user          users         @relation(fields: [user_id], references: [id])
+  wallet        wallets       @relation(fields: [wallet_id], references: [id])
+  user_category user_category @relation(fields: [user_category_id], references: [id])
+
+  @@index([user_id, transaction_date])
+  @@index([wallet_id, transaction_date])
+  @@index([user_category_id])
+  @@map("transactions")
+}
+
+/* ===== 6. budgets ===== */
+
+model budgets {
+  id               Int      @id @default(autoincrement())
+  user_id          Int
+  user_category_id Int
+  wallet_id        Int
+  amount           Decimal  @db.Decimal(10, 2)
+  start_date       DateTime @db.Date
+  end_date         DateTime @db.Date
+  is_repeat        Int(1)   @default(0)
+  created_at       DateTime @default(now()) @db.Timestamp(6)
+  updated_at       DateTime @default(now()) @db.Timestamp(6) 
+
+  user          users         @relation(fields: [user_id], references: [id])
+  user_category user_category @relation(fields: [user_category_id], references: [id])
+  wallet wallets @relation(fields: [wallet_id], references: [id])
+
+  @@index([user_id, start_date, end_date])
+  @@map("budgets")
+}
+
+/* ===== 7. streaks ===== */
+
+model streaks {
+  id                    Int      @id @default(autoincrement())
+  user_id               Int
+  streak_days           Int      @default(0)
+  last_transaction_date DateTime @default(now()) @db.Timestamp(6)
+  created_at            DateTime @default(now()) @db.Timestamp(6)
+  updated_at            DateTime @default(now()) @db.Timestamp(6)
+
+  user users @relation(fields: [user_id], references: [id])
+
+  @@map("streaks")
+}
+
+/* ===== 8. notifications ===== */
+
+model notifications {
+  id            Int                @id @default(autoincrement())
+  user_id       Int
+  type          String?            @db.VarChar(50)
+  title         String?            @db.VarChar(255)
+  message       String             @db.Text
+  data          Json?              @db.JsonB
+  status        NotificationStatus @default(unread)
+  scheduled_for DateTime?          @db.Timestamp(6)
+  created_at    DateTime           @default(now()) @db.Timestamp(6)
+  updated_at    DateTime           @default(now()) @db.Timestamp(6)
+
+  user users @relation(fields: [user_id], references: [id])
+
+  @@index([user_id, status])
+  @@map("notifications")
+}
+
+/* ===== 9. reports ===== */
+
+model reports {
+  id         Int         @id @default(autoincrement())
+  user_id    Int
+  type       ReportType
+  start_date DateTime    @db.Date
+  end_date   DateTime    @db.Date
+  created_at DateTime    @default(now()) @db.Timestamp(6)
+  updated_at DateTime    @default(now()) @db.Timestamp(6)
+
+  user users @relation(fields: [user_id], references: [id])
+
+  @@map("reports")
+}
+
+/* ===== 10. savings_goals ===== */
+
+model savings_goals {
+  id             Int                @id @default(autoincrement())
+  user_id        Int
+  name           String             @db.VarChar(255)
+  target_amount  Int
+  current_amount Int                @default(0)
+  deadline       DateTime           @db.Date
+  icon           String             @db.VarChar(255)
+  color          String             @db.VarChar(50)
+  currency       String             @db.VarChar(5) @default("VND")
+  status         SavingsGoalStatus  @default(active)
+  created_at     DateTime           @default(now()) @db.Timestamp(6)
+  updated_at     DateTime           @default(now()) @db.Timestamp(6)
+
+  user users @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  // back-relations
+  savings_goal_contributions savings_goal_contributions[]
+
+  @@map("savings_goals")
+}
+
+/* ===== 11. savings_goal_contributions ===== */
+
+model savings_goal_contributions {
+  id         Int      @id @default(autoincrement())
+  goal_id    Int
+  amount     Int
+  note       String?  @db.Text
+  created_at DateTime @default(now()) @db.Timestamp(6)
+
+  savings_goal savings_goals @relation(fields: [goal_id], references: [id], onDelete: Cascade)
+
+  @@map("savings_goal_contributions")
+}
+
+/* ===== 12. recurring_expenses ===== */
+
+model recurring_expenses {
+  id                  Int                @id @default(autoincrement())
+  user_id             Int
+  wallet_id           Int                
+  name                String             @db.VarChar(255)
+  amount              Int
+  user_category_id         Int
+  frequency           RecurringFrequency
+  next_due_date       DateTime           @db.Date
+  is_active           Int(1)             @default(1)
+  is_auto_detected    Int(1)             @default(0)
+  confidence          Int                @default(100)
+  reminder_days_before Int               @default(1)
+  note                String?            @db.Text
+  created_at          DateTime           @default(now()) @db.Timestamp(6)
+  updated_at          DateTime           @default(now()) @db.Timestamp(6)
+
+  user users @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user_category user_category @relation(fields: [user_category_id], references: [id])
+  wallet wallets @relation(fields: [wallet_id], references: [id])  
+
+  // back-relations
+  recurring_expense_reminders recurring_expense_reminders[]
+
+  @@index([wallet_id])
+  @@index([user_id, next_due_date])
+  @@map("recurring_expenses")
+}
+
+/* ===== 13. recurring_expense_reminders ===== */
+
+model recurring_expense_reminders {
+  id                  Int      @id @default(autoincrement())
+  recurring_expense_id Int
+  user_id             Int
+  scheduled_date      DateTime @db.Date
+  is_notified         Int(1)   @default(0)
+  created_at          DateTime @default(now()) @db.Timestamp(6)
+
+  recurring_expense recurring_expenses @relation(fields: [recurring_expense_id], references: [id], onDelete: Cascade)
+  user users @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("recurring_expense_reminders")
+}
+
+/* ===== 14. chat_messages ===== */
+
+model chat_messages {
+  id         String    @id @default(uuid())
+  user_id    Int
+  role       ChatRole
+  content    String    @db.Text
+  metadata   Json?     @db.JsonB
+  created_at DateTime  @default(now()) @db.Timestamp(6)
+
+  user users @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("chat_messages")
+}
+
+/* ===== 15. chat_faqs ===== */
+
+model chat_faqs {
+  id       String   @id @default(uuid())
+  question String   @db.VarChar(500)
+  answer   String   @db.Text
+  tags     String[]
+
+  @@map("chat_faqs")
+}
+
+/* ===== 16. notification_settings ===== */
+
+model notification_settings {
+  id                    Int      @id @default(autoincrement())
+  user_id               Int      @unique
+  budget_alerts         Int(1)   @default(1)
+  transaction_reminders Int(1)   @default(1)
+  weekly_reports        Int(1)   @default(1)
+  security_alerts       Int(1)   @default(1)
+  push_enabled          Int(1)   @default(1)
+  quiet_hours_enabled   Int(1)   @default(0)
+  quiet_hours_start     String?  @db.VarChar(10)
+  quiet_hours_end       String?  @db.VarChar(10)
+  created_at            DateTime @default(now()) @db.Timestamp(6)
+  updated_at            DateTime @default(now()) @db.Timestamp(6)
+
+  user users @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("notification_settings")
+}
+
+/* ===== 17. streak_history ===== */
+
+model streak_history {
+  id           Int      @id @default(autoincrement())
+  user_id      Int
+  date         DateTime @db.Date
+  has_activity Int(1)   @default(0)
+  activity_type String  @db.VarChar(50)
+  created_at   DateTime @default(now()) @db.Timestamp(6)
+
+  user users @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, date])
+  @@index([user_id, date])
+  @@map("streak_history")
+}
+
+/* ===== 18. streak_settings ===== */
+
+model streak_settings {
+  id                    Int      @id @default(autoincrement())
+  user_id               Int      @unique
+  daily_reminder_enabled Int(1)  @default(1)
+  reminder_time         String?  @db.VarChar(10)
+  weekend_mode          Int(1)   @default(0)
+  freeze_available      Int      @default(1)
+  freeze_used_this_week Int      @default(0)
+  best_streak           Int      @default(0)
+  total_active_days     Int      @default(0)
+  created_at            DateTime @default(now()) @db.Timestamp(6)
+  updated_at            DateTime @default(now()) @db.Timestamp(6)
+
+  user users @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("streak_settings")
+}
+
+/* ===== 19. log_user ===== */
+
+model log_user {
+  id         Int      @id @default(autoincrement())
+  user_id    Int
+  action     String   @db.VarChar(255)
+  ip_address String   @db.VarChar(45)
+  created_at DateTime @default(now()) @db.Timestamp(6)
+  updated_at DateTime @default(now()) @db.Timestamp(6)
+
+  user users @relation(fields: [user_id], references: [id])
+
+  @@index([user_id, created_at])
+  @@map("log_user")
+}
+

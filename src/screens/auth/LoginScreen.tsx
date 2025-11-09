@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { View, StyleSheet, KeyboardAvoidingView, Platform, Image } from 'react-native';
 import { Text, TextInput, Button, HelperText } from 'react-native-paper';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -38,7 +38,33 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
     }
 
     const result = await login(email.trim(), password);
-    if (!result.success) {
+    
+    if (result.success && result.requires2FA) {
+      // Chuyển đến màn hình nhập mã 2FA
+      const targetEmail = result.email || email.trim();
+      if (__DEV__) {
+        console.log('🔄 Attempting navigation to TwoFactorAuth with email:', targetEmail);
+      }
+      
+      // Sử dụng setTimeout để đảm bảo state đã được cập nhật
+      setTimeout(() => {
+        try {
+          if (__DEV__) {
+            console.log('🔄 Calling navigation.replace...');
+          }
+          navigation.replace('TwoFactorAuth', { email: targetEmail });
+        } catch (error) {
+          console.error('❌ Navigation error:', error);
+          // Fallback: thử navigate nếu replace thất bại
+          try {
+            navigation.navigate('TwoFactorAuth', { email: targetEmail });
+          } catch (navError) {
+            console.error('❌ Navigation.navigate also failed:', navError);
+            setLoginError('Không thể chuyển đến màn hình xác thực');
+          }
+        }
+      }, 100);
+    } else if (!result.success) {
       setLoginError(result.message || 'Đăng nhập thất bại');
     }
 	};

@@ -1,36 +1,55 @@
-// screens/ConfirmEmailScreen.tsx
-import React, { useState } from 'react';
+// screens/auth/TwoFactorAuthScreen.tsx
+import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, KeyboardAvoidingView, Platform, Image } from 'react-native';
 import { Text } from 'react-native-paper';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { fakeApi } from '../../services/fakeApi';
 import { useAppTheme } from '../../theme';
+import { AuthStackParamList } from '../../navigators/AuthNavigator';
+import { useAuth } from '../../contexts/AuthContext';
 import VerificationCodeInput from '../../components/VerificationCodeInput';
 
-export default function ConfirmEmailScreen({ route, navigation }: any) {
+interface TwoFactorAuthScreenProps {
+  navigation: NativeStackNavigationProp<AuthStackParamList, 'TwoFactorAuth'>;
+  route: {
+    params: {
+      email: string;
+    };
+  };
+}
+
+export default function TwoFactorAuthScreen({ route, navigation }: TwoFactorAuthScreenProps) {
 	const theme = useAppTheme();
-	const { email, otp: otpFromRoute } = route.params ?? {};
-	const [otp, setOtp] = useState<string>(otpFromRoute ?? '');
+	const { loginWith2FA } = useAuth();
+	const { email } = route.params ?? {};
+	const [code, setCode] = useState<string>('');
 	const [loading, setLoading] = useState(false);
 	const [resending, setResending] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
+	// Debug log khi component mount
+	useEffect(() => {
+		if (__DEV__) {
+			console.log('✅ TwoFactorAuthScreen mounted', { email });
+		}
+	}, [email]);
+
 	const onSubmit = async () => {
 		setError(null);
-		if (!otp || otp.length !== 6) {
-			setError('Mã OTP phải có 6 chữ số');
+		if (!code || code.length !== 6) {
+			setError('Mã xác thực phải có 6 chữ số');
 			return;
 		}
 		try {
 			setLoading(true);
-			const result = await fakeApi.confirmEmail(email, otp);
+			const result = await loginWith2FA(email, code);
 			
 			if (!result.success) {
 				setError(result.message || 'Xác thực thất bại');
 				return;
 			}
 			
-			// Navigate to setup after successful confirmation
-			navigation.replace('Setup', { email });
+			// Navigation will be handled by AuthContext
 		} catch (e: any) {
 			setError(e.message ?? 'Đã xảy ra lỗi');
 		} finally {
@@ -38,14 +57,13 @@ export default function ConfirmEmailScreen({ route, navigation }: any) {
 		}
 	};
 
-	const onResend = async () => {
+	const onResendCode = async () => {
 		setError(null);
 		try {
 			setResending(true);
-			const result = await fakeApi.resendOTP(email);
+			const result = await fakeApi.resend2FACode(email);
 			if (result.success) {
 				setError(null);
-				// OTP mới sẽ được log trong console (dev mode)
 			} else {
 				setError(result.message || 'Gửi lại mã thất bại');
 			}
@@ -72,24 +90,24 @@ export default function ConfirmEmailScreen({ route, navigation }: any) {
 						/>
 					</View>
 					<Text style={[styles.title, { color: theme.colors.onBackground }]}>
-						Xác nhận email
+						Xác thực 2 bước
 					</Text>
 				</View>
 
 				{/* Verification Code Input Widget */}
 				<VerificationCodeInput
 					email={email}
-					code={otp}
-					onCodeChange={setOtp}
+					code={code}
+					onCodeChange={setCode}
 					onSubmit={onSubmit}
-					onResend={onResend}
+					onResend={onResendCode}
 					loading={loading}
 					resending={resending}
 					error={error}
-					label="Mã OTP"
-					submitLabel="Xác nhận"
-					resendLabel="Gửi lại mã OTP"
-					autoFocus={!otpFromRoute}
+					label="Mã xác thực"
+					submitLabel="Xác thực"
+					resendLabel="Gửi lại mã"
+					autoFocus
 				/>
 			</View>
 		</KeyboardAvoidingView>
@@ -124,3 +142,4 @@ const styles = StyleSheet.create({
 		marginBottom: 8,
 	},
 });
+

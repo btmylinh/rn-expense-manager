@@ -1,7 +1,7 @@
 // screens/ProfileScreen.tsx
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Alert, ScrollView } from 'react-native';
-import { Avatar, Button, Divider, List, Portal, Dialog, TextInput, Text } from 'react-native-paper';
+import { Avatar, Button, Divider, List, Portal, Dialog, TextInput, Text, Switch } from 'react-native-paper';
 import { useAppTheme } from '../../theme';
 import AppBar from '../../components/AppBar';
 import { fakeApi } from '../../services/fakeApi';
@@ -28,6 +28,10 @@ export default function ProfileScreen({ navigation }: any) {
 	const [walletSheetVisible, setWalletSheetVisible] = useState(false);
 	const [currentWalletId, setCurrentWalletId] = useState<number | undefined>(undefined);
 	const [categorySheetVisible, setCategorySheetVisible] = useState(false);
+	
+	// 2FA state
+	const [is2FAEnabled, setIs2FAEnabled] = useState(false);
+	const [loading2FA, setLoading2FA] = useState(false);
 
 	useEffect(() => {
 		// Sử dụng thông tin từ AuthContext
@@ -36,13 +40,19 @@ export default function ProfileScreen({ navigation }: any) {
 			setUserEmail(user.email || '');
 		}
 
-		// Load wallet info
+		// Load wallet info and 2FA status
 		let mounted = true;
 		const load = async () => {
 			try {
 				setLoading(true);
 				const cw = await fakeApi.getCurrentWalletId(userId);
 				if (mounted && (cw as any)?.walletId) setCurrentWalletId((cw as any).walletId);
+				
+				// Load 2FA status
+				const statusRes = await fakeApi.getUser2FAStatus(userId);
+				if (mounted && statusRes.success) {
+					setIs2FAEnabled(statusRes.is_2fa || false);
+				}
 			} finally {
 				setLoading(false);
 			}
@@ -91,6 +101,45 @@ export default function ProfileScreen({ navigation }: any) {
 		]);
 	};
 
+	const handleToggle2FA = async (enable: boolean) => {
+		try {
+			setLoading2FA(true);
+			const res = await fakeApi.toggle2FA(userId, enable);
+			if (res.success) {
+				setIs2FAEnabled(enable);
+				Alert.alert('Thành công', res.message || (enable ? 'Đã bật xác thực 2 bước' : 'Đã tắt xác thực 2 bước'));
+			} else {
+				Alert.alert('Lỗi', res.message || 'Cập nhật thất bại');
+			}
+		} catch (e: any) {
+			Alert.alert('Lỗi', e?.message || 'Đã xảy ra lỗi');
+		} finally {
+			setLoading2FA(false);
+		}
+	};
+
+	const onToggle2FA = (value: boolean) => {
+		if (value) {
+			Alert.alert(
+				'Bật xác thực 2 bước',
+				'Khi bật xác thực 2 bước, bạn sẽ cần nhập mã xác thực qua email mỗi khi đăng nhập. Bạn có muốn tiếp tục?',
+				[
+					{ text: 'Hủy', style: 'cancel' },
+					{ text: 'Bật', onPress: () => handleToggle2FA(true) },
+				]
+			);
+		} else {
+			Alert.alert(
+				'Tắt xác thực 2 bước',
+				'Bạn có chắc muốn tắt xác thực 2 bước? Tài khoản của bạn sẽ kém an toàn hơn.',
+				[
+					{ text: 'Hủy', style: 'cancel' },
+					{ text: 'Tắt', style: 'destructive', onPress: () => handleToggle2FA(false) },
+				]
+			);
+		}
+	};
+
 
 
 	return (
@@ -131,6 +180,19 @@ export default function ProfileScreen({ navigation }: any) {
 						title="Cài đặt Streak"
 						left={props => <List.Icon {...props} icon="fire"/>}
 						onPress={() => navigation.navigate('StreakSettings')}
+					/>
+					<Divider />
+					<List.Item
+						title="Xác thực 2 bước"
+						description={is2FAEnabled ? "Đã bật - Yêu cầu mã xác thực khi đăng nhập" : "Chưa bật - Bảo vệ tài khoản bằng mã xác thực qua email"}
+						left={props => <List.Icon {...props} icon="shield-check-outline" />}
+						right={() => (
+							<Switch
+								value={is2FAEnabled}
+								onValueChange={onToggle2FA}
+								disabled={loading2FA}
+							/>
+						)}
 					/>
 					<Divider />
 					<List.Item

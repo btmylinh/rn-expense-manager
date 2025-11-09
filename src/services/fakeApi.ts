@@ -2,8 +2,9 @@
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
 // Simple in-memory storage
-let users: Array<{id: number, email: string, password: string, verified?: boolean, name?: string}> = [];
+let users: Array<{id: number, email: string, password: string, verified?: boolean, name?: string, is_2fa?: number}> = [];
 let pendingOtps: Array<{email: string, otp: string, expires: number}> = [];
+let pending2FA: Array<{email: string, code: string, expires: number}> = [];
 let wallets: Array<{id: number, userId: number, name: string, amount: number, currency: string, color?: string, is_default?: boolean | number}> = [];
 let currentWalletByUser: Record<number, number | undefined> = {};
 let categories: Array<{id: number, name: string, type: number, icon: string, color?: string}> = [];
@@ -83,10 +84,20 @@ let currentUserId: number | null = null;
 
 // Initialize mock data deterministically from JSON (map snake_case -> camelCase)
 const mockUserId = 1;
-try {
-	// eslint-disable-next-line @typescript-eslint/no-var-requires
-	const seed = require('./mockData.json');
-	users = seed.users || users;
+	try {
+		// eslint-disable-next-line @typescript-eslint/no-var-requires
+		const seed = require('./mockData.json');
+		if (seed.users) {
+			// Map users và đảm bảo is_2fa được map đúng
+			users = seed.users.map((u: any) => ({
+				id: u.id,
+				email: u.email,
+				password: u.password,
+				verified: u.verified,
+				name: u.name,
+				is_2fa: u.is_2fa !== undefined ? u.is_2fa : (u.is2fa !== undefined ? u.is2fa : 0)
+			}));
+		}
 	if (seed.wallets) {
 		wallets = seed.wallets.map((w: any) => ({
 			id: w.id,
@@ -382,15 +393,38 @@ export const fakeApi = {
 		const user = users.find(u => u.email === email && u.password === password);
 		
 		if (user) {
+			// Kiểm tra nếu tài khoản có bật 2FA (kiểm tra cả 1 và true)
+			const has2FA = user.is_2fa === 1 || user.is_2fa === true || (typeof user.is_2fa === 'number' && user.is_2fa > 0);
+			
+			if (has2FA) {
+				// Gửi mã xác thực qua email
+				const code = generateOTP();
+				pending2FA.push({ email, code, expires: Date.now() + 600000 }); // 10 phút
+				
+				// Log mã 2FA cho development
+				if (__DEV__) {
+					console.log('🔐 2FA Code for', email, ':', code);
+				}
+				
+				return {
+					success: true,
+					requires2FA: true,
+					email: user.email,
+					message: 'Mã xác thực đã được gửi đến email của bạn'
+				};
+			}
+			
 			return {
 				success: true,
+				requires2FA: false,
 				user: {
 					id: user.id,
 					email: user.email,
 					name: user.name,
 					verified: user.verified
 				},
-				token: `fake-token-${user.id}`
+				token: `fake-token-${user.id}`,
+				email: user.email
 			};
 		} else {
 			return {
@@ -437,6 +471,28 @@ export const fakeApi = {
 		return { success: true, message: 'Xác thực email thành công' };
 	},
 
+	async resendOTP(email: string) {
+		await delay(400);
+		const user = users.find(u => u.email === email);
+		if (!user) {
+			return { success: false, message: 'Email không tồn tại' };
+		}
+		
+		// Xóa mã cũ
+		pendingOtps = pendingOtps.filter(p => p.email !== email);
+		
+		// Tạo mã mới
+		const otp = generateOTP();
+		pendingOtps.push({ email, otp, expires: Date.now() + 600000 }); // 10 phút
+		
+		// Log OTP cho development
+		if (__DEV__) {
+			console.log('📧 OTP (resend) for', email, ':', otp);
+		}
+		
+		return { success: true, message: 'Đã gửi lại mã OTP đến email của bạn', otp };
+	},
+
 	async resetPassword(email: string) {
 		await delay(400);
 		const user = users.find(u => u.email === email);
@@ -444,6 +500,88 @@ export const fakeApi = {
 			return { success: false, message: 'Email không tồn tại' };
 		}
 		return { success: true, message: 'Đã gửi email đặt lại mật khẩu' };
+	},
+
+	// 2FA Endpoints
+	async verify2FA(email: string, code: string) {
+		await delay(500);
+		const pending = pending2FA.find(p => p.email === email && p.code === code && p.expires > Date.now());
+		if (!pending) {
+			return { success: false, message: 'Mã xác thực không hợp lệ hoặc đã hết hạn' };
+		}
+		
+		const user = users.find(u => u.email === email);
+		if (!user) {
+			return { success: false, message: 'Người dùng không tồn tại' };
+		}
+		
+		// Xóa mã 2FA đã sử dụng
+		pending2FA = pending2FA.filter(p => p.email !== email);
+		
+		return {
+			success: true,
+			user: {
+				id: user.id,
+				email: user.email,
+				name: user.name,
+				verified: user.verified
+			},
+			token: `fake-token-${user.id}`
+		};
+	},
+
+	async resend2FACode(email: string) {
+		await delay(400);
+		const user = users.find(u => u.email === email);
+		if (!user) {
+			return { success: false, message: 'Email không tồn tại' };
+		}
+		
+		if (user.is_2fa !== 1) {
+			return { success: false, message: 'Tài khoản chưa bật xác thực 2 bước' };
+		}
+		
+		// Xóa mã cũ
+		pending2FA = pending2FA.filter(p => p.email !== email);
+		
+		// Tạo mã mới
+		const code = generateOTP();
+		pending2FA.push({ email, code, expires: Date.now() + 600000 }); // 10 phút
+		
+		// Log mã 2FA cho development
+		if (__DEV__) {
+			console.log('🔐 2FA Code (resend) for', email, ':', code);
+		}
+		
+		return { success: true, message: 'Đã gửi lại mã xác thực đến email của bạn' };
+	},
+
+	async toggle2FA(userId: number, enable: boolean) {
+		await delay(300);
+		const user = users.find(u => u.id === userId);
+		if (!user) {
+			return { success: false, message: 'Người dùng không tồn tại' };
+		}
+		
+		user.is_2fa = enable ? 1 : 0;
+		return { 
+			success: true, 
+			message: enable ? 'Đã bật xác thực 2 bước' : 'Đã tắt xác thực 2 bước',
+			is_2fa: user.is_2fa
+		};
+	},
+
+	async getUser2FAStatus(userId: number) {
+		await delay(200);
+		const user = users.find(u => u.id === userId);
+		if (!user) {
+			return { success: false, message: 'Người dùng không tồn tại' };
+		}
+		
+		return { 
+			success: true, 
+			is_2fa: user.is_2fa === 1 
+		};
 	},
 
 	getCurrentUserId() {

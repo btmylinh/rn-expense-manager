@@ -12,7 +12,8 @@ interface User {
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<{ success: boolean; message?: string }>;
+  login: (email: string, password: string) => Promise<{ success: boolean; message?: string; requires2FA?: boolean; email?: string }>;
+  loginWith2FA: (email: string, code: string) => Promise<{ success: boolean; message?: string }>;
   logout: () => Promise<void>;
   isAuthenticated: boolean;
 }
@@ -58,6 +59,45 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setIsLoading(true);
       const result = await fakeApi.login(email, password);
       
+      // Nếu yêu cầu 2FA, trả về thông tin để chuyển đến màn hình 2FA
+      if (result.success && result.requires2FA) {
+        return { 
+          success: true, 
+          requires2FA: true, 
+          email: result.email || email,
+          message: result.message 
+        };
+      }
+      
+      if (result.success && result.user) {
+        const userData: User = {
+          id: result.user.id,
+          email: result.user.email,
+          name: result.user.name || '',
+          verified: result.user.verified || false
+        };
+        
+        setUser(userData);
+        await AsyncStorage.setItem('user', JSON.stringify(userData));
+        await AsyncStorage.setItem('authToken', result.token || 'fake-token');
+        
+        return { success: true, requires2FA: false };
+      } else {
+        return { success: false, message: result.message || 'Đăng nhập thất bại', requires2FA: false };
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      return { success: false, message: 'Có lỗi xảy ra khi đăng nhập' };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loginWith2FA = async (email: string, code: string) => {
+    try {
+      setIsLoading(true);
+      const result = await fakeApi.verify2FA(email, code);
+      
       if (result.success && result.user) {
         const userData: User = {
           id: result.user.id,
@@ -72,11 +112,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         
         return { success: true };
       } else {
-        return { success: false, message: result.message || 'Đăng nhập thất bại' };
+        return { success: false, message: result.message || 'Xác thực thất bại' };
       }
     } catch (error) {
-      console.error('Login error:', error);
-      return { success: false, message: 'Có lỗi xảy ra khi đăng nhập' };
+      console.error('2FA verification error:', error);
+      return { success: false, message: 'Có lỗi xảy ra khi xác thực' };
     } finally {
       setIsLoading(false);
     }
@@ -96,6 +136,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     user,
     isLoading,
     login,
+    loginWith2FA,
     logout,
     isAuthenticated: !!user
   };
