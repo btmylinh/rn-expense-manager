@@ -322,7 +322,7 @@ export default function TransactionsScreen({ navigation }: any) {
                   style={styles.filterButtonIcon}
                 />
                 <Text style={[styles.filterButtonText, { color: theme.colors.onSurfaceVariant }]}>
-                  {formatDateRange()}
+                {formatDateRange()}
                 </Text>
               </TouchableOpacity>
             }
@@ -383,7 +383,7 @@ export default function TransactionsScreen({ navigation }: any) {
                   style={styles.filterButtonIcon}
                 />
                 <Text style={[styles.filterButtonText, { color: theme.colors.onSurfaceVariant }]}>
-                  {selectedCategory?.name || 'Tất cả danh mục'}
+                {selectedCategory?.name || 'Tất cả danh mục'}
                 </Text>
               </TouchableOpacity>
             }
@@ -427,7 +427,7 @@ export default function TransactionsScreen({ navigation }: any) {
                   style={styles.filterButtonIcon}
                 />
                 <Text style={[styles.filterButtonText, { color: theme.colors.onSurfaceVariant }]}>
-                  {selectedWallet?.name || 'Tất cả ví'}
+                {selectedWallet?.name || 'Tất cả ví'}
                 </Text>
               </TouchableOpacity>
             }
@@ -475,7 +475,7 @@ export default function TransactionsScreen({ navigation }: any) {
                 style={styles.filterButtonIcon}
               />
               <Text style={[styles.filterButtonText, { color: theme.colors.onErrorContainer }]}>
-                Xóa bộ lọc
+              Xóa bộ lọc
               </Text>
             </TouchableOpacity>
           )}

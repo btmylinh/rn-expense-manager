@@ -3796,6 +3796,74 @@ async resetStreak(userId: number) {
 		});
 		
 		return { success: true, data: upcomingReminders };
+	},
+
+	// ============ REPORT EXPORT ENDPOINTS ============
+	
+	async exportReportExcel(userId: number, filters: {
+		walletId?: number;
+		type?: number; // 1: income, 2: expense, undefined: all
+		startDate?: string;
+		endDate?: string;
+	}) {
+		await delay(500);
+		
+		// Get filtered transactions
+		let filtered = transactions.filter(t => t.userId === userId);
+		
+		if (filters.walletId) {
+			filtered = filtered.filter(t => t.walletId === filters.walletId);
+		}
+		
+		if (filters.type) {
+			filtered = filtered.filter(t => t.type === filters.type);
+		}
+		
+		if (filters.startDate) {
+			filtered = filtered.filter(t => {
+				const txDate = new Date(t.transactionDate);
+				txDate.setHours(0, 0, 0, 0);
+				const startDate = new Date(filters.startDate!);
+				startDate.setHours(0, 0, 0, 0);
+				return txDate >= startDate;
+			});
+		}
+		
+		if (filters.endDate) {
+			filtered = filtered.filter(t => {
+				const txDate = new Date(t.transactionDate);
+				txDate.setHours(23, 59, 59, 999);
+				const endDate = new Date(filters.endDate!);
+				endDate.setHours(23, 59, 59, 999);
+				return txDate <= endDate;
+			});
+		}
+		
+		// Sort by date descending
+		filtered = filtered.sort((a, b) => new Date(b.transactionDate).getTime() - new Date(a.transactionDate).getTime());
+		
+		// Enrich with category and wallet data
+		const enriched = filtered.map(tx => {
+			const category = userCategories.find(c => c.id === tx.userCategoryId);
+			const wallet = wallets.find(w => w.id === tx.walletId);
+			return {
+				...tx,
+				categoryName: category?.name || 'Chưa phân loại',
+				categoryIcon: category?.icon || '',
+				walletName: wallet?.name || 'Chưa xác định',
+				typeName: tx.type === 1 ? 'Thu nhập' : 'Chi tiêu',
+			};
+		});
+		
+		return {
+			success: true,
+			data: enriched,
+			summary: {
+				total: enriched.length,
+				income: enriched.filter(t => t.type === 1).reduce((sum, t) => sum + t.amount, 0),
+				expense: enriched.filter(t => t.type === 2).reduce((sum, t) => sum + t.amount, 0),
+			}
+		};
 	}
 };
 

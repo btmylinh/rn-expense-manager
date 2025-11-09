@@ -11,12 +11,14 @@ Dự án hiện tại đã hoàn thành các tính năng cơ bản:
 - Quản lý ví và danh mục
 - Nhập liệu thông minh (AI, OCR, Voice - đang dùng fake API)
 
-Theo đề cương đồ án, cần bổ sung các tính năng còn thiếu:
-- Mục tiêu tiết kiệm
-- Dự báo chi tiêu tái diễn
+Các tính năng đã hoàn thành theo đề cương:
+- Mục tiêu tiết kiệm (hoàn thành)
+- Dự báo chi tiêu tái diễn (hoàn thành)
+- Chatbot tài chính (hoàn thành)
+- Xuất báo cáo CSV (hoàn thành)
+
+Các tính năng còn thiếu:
 - Gợi ý tiết kiệm dựa trên dữ liệu lịch sử
-- Chatbot tài chính
-- Xuất báo cáo PDF/Excel
 
 ---
 
@@ -24,77 +26,31 @@ Theo đề cương đồ án, cần bổ sung các tính năng còn thiếu:
 
 ### 1. MỤC TIÊU TIẾT KIỆM (SAVINGS GOALS)
 
-Hiện trạng: Không có
+Hiện trạng: Đã hoàn thành
 
-Vị trí đặt: GHÉP VÀO TAB "NGÂN SÁCH"
-- Đổi tên tab "Ngân sách" thành "Kế hoạch" 
-- Thêm SegmentedButtons trong BudgetsScreen với 2 tabs: [Ngân sách] [Mục tiêu]
-- Tab "Ngân sách": Giữ nguyên giao diện hiện tại
-- Tab "Mục tiêu": Hiển thị danh sách mục tiêu tiết kiệm
-
-Lý do:
-- Không tăng số lượng bottom tabs (vẫn giữ 5 tabs)
-- Logic rõ ràng: Ngân sách = Kế hoạch CHI, Mục tiêu = Kế hoạch TIẾT KIỆM
-- Dễ chuyển đổi giữa 2 tính năng liên quan
-- Tương tự cách BudgetsScreen hiện tại đã có tabs theo thời gian
-
-Cần làm:
-- Refactor BudgetsScreen: Thêm SegmentedButtons cho 2 tabs chính
-- SavingsGoalsScreen: Danh sách mục tiêu với progress bar (tương tự BudgetCard)
-- SavingsGoalCreateScreen: Tạo/sửa mục tiêu (tên, số tiền, hạn cuối, icon, màu)
-- SavingsGoalDetailScreen: Chi tiết tiến độ, lịch sử đóng góp, dự đoán hoàn thành
+Đã triển khai:
+- SavingsGoalsScreen: Danh sách mục tiêu với progress bar
+- SavingsGoalCreateScreen: Tạo/sửa mục tiêu
+- SavingsGoalDetailScreen: Chi tiết tiến độ, lịch sử đóng góp
 - Thêm tiền vào mục tiêu
 - Thông báo khi đạt mục tiêu
-- Empty state khi chưa có mục tiêu
-- Card "Mục tiêu gần đạt" trong Dashboard (quick access)
+- Xử lý các trạng thái đặc biệt (completed, overdue, sắp đến hạn)
+- ToolsScreen: Màn hình công cụ tổng hợp
 
-Giao diện tham khảo:
-```
-BudgetsScreen (đổi tên Tab thành "Kế hoạch")
-├─ Header: "Kế hoạch tài chính"
-├─ SegmentedButtons: [Ngân sách] [Mục tiêu]
-├─ Tab "Ngân sách":
-│  └─ Giữ nguyên giao diện hiện tại
-└─ Tab "Mục tiêu":
-   ├─ Card mỗi mục tiêu:
-   │  ├─ Icon & Tên (VD: 💻 Mua Laptop)
-   │  ├─ Progress Bar (15tr/20tr - 75%)
-   │  ├─ Còn thiếu: 5.000.000đ
-   │  ├─ Dự kiến: 15/12/2025
-   │  └─ Button "Thêm tiền"
-   └─ FAB "+" Tạo mục tiêu mới
-```
+### 2. DỰ BÁO CHI TIÊU TÁI DIỄN (RECURRING EXPENSES)
 
-API cần bổ sung:
-- getSavingsGoals(userId)
-- createSavingsGoal(userId, data)
-- updateSavingsGoal(userId, goalId, data)
-- deleteSavingsGoal(userId, goalId)
-- addContribution(userId, goalId, amount)
-- getSavingsGoalDetail(userId, goalId)
+Hiện trạng: Đã hoàn thành
 
-### 2. DỰ BÁO CHI TIÊU TÁI DIỄN
-
-Hiện trạng: Không có
-
-Cần làm:
-- RecurringExpensesScreen: Danh sách chi tiêu định kỳ đã phát hiện
+Đã triển khai:
+- RecurringExpensesScreen: Danh sách chi tiêu định kỳ
 - Thêm chi tiêu định kỳ thủ công
 - Cài đặt nhắc nhở trước ngày đến hạn
-- Tự động phát hiện các khoản chi lặp lại (theo pattern)
+- Tự động phát hiện các khoản chi lặp lại
 - Dự báo chi tiêu tháng tới
-
-API cần bổ sung:
-- detectRecurringExpenses(userId)
-- getRecurringExpenses(userId)
-- createRecurringExpense(userId, data)
-- updateRecurringExpense(userId, expenseId, data)
-- deleteRecurringExpense(userId, expenseId)
-- predictNextMonthExpenses(userId)
 
 ### 3. GỢI Ý TIẾT KIỆM THÔNG MINH
 
-Hiện trạng: Không có
+Hiện trạng: Chưa có
 
 Cần làm:
 - RecommendationsScreen: Hiển thị gợi ý tiết kiệm
@@ -111,39 +67,22 @@ API cần bổ sung:
 
 ### 4. CHATBOT TÀI CHÍNH
 
-Hiện trạng: Không có
+Hiện trạng: Đã hoàn thành
 
-Cần làm:
+Đã triển khai:
 - ChatbotScreen: Giao diện chat với AI
 - Hỏi về chi tiêu, ngân sách, mục tiêu
 - Gợi ý lập kế hoạch tài chính
 - Câu hỏi thường gặp (FAQ)
-- Tích hợp OpenAI API hoặc tương tự
 
-API cần bổ sung:
-- sendChatMessage(userId, message)
-- getChatHistory(userId)
-- getFAQs()
+### 5. XUẤT BÁO CÁO CSV
 
-### 5. XUẤT BÁO CÁO PDF/EXCEL
+Hiện trạng: Đã hoàn thành
 
-Hiện trạng: Không có
-
-Cần làm:
+Đã triển khai:
 - ReportExportScreen: Chọn loại báo cáo và khoảng thời gian
-- Xuất PDF với biểu đồ và bảng số liệu
-- Xuất Excel với dữ liệu chi tiết
+- Xuất CSV với dữ liệu chi tiết
 - Chia sẻ báo cáo qua email/app khác
-
-API cần bổ sung:
-- exportReportPDF(userId, reportType, timeRange)
-- exportReportExcel(userId, reportType, timeRange)
-
-Thư viện cần cài:
-- react-native-html-to-pdf
-- xlsx
-- react-native-fs
-- react-native-share
 
 
 ---
@@ -155,540 +94,9 @@ Tuy nhiên FE đang dùng fakeApi.ts nên chưa cần chạy migration, chỉ c�
 
 ---
 
-## FEATURE 1: MỤC TIÊU TIẾT KIỆM (SAVINGS GOALS)
+## FEATURE 3: GỢI Ý TIẾT KIỆM THÔNG MINH
 
-### SESSION 1A: Mock Data và API cho Mục tiêu tiết kiệm
-
-Thời gian: 0.5 ngày
-
-Trước session này: Chưa có gì về Savings Goals
-
-Session này làm gì:
-1. Thêm mock data vào fakeApi.ts
-   - Tạo array `savings_goals` với cấu trúc:
-     ```typescript
-     {
-       id: number,
-       user_id: number,
-       name: string,              // "Mua Laptop"
-       target_amount: number,      // 20000000
-       current_amount: number,     // 15000000
-       deadline: string,          // "2025-12-31"
-       icon: string,              // "laptop"
-       color: string,             // "#FF8A00"
-       status: string,            // "active" | "completed" | "cancelled"
-       created_at: string,
-       updated_at: string
-     }
-     ```
-   - Tạo array `savings_goal_contributions` (lịch sử đóng góp):
-     ```typescript
-     {
-       id: number,
-       goalId: number,
-       amount: number,
-       note: string,
-       createdAt: string
-     }
-     ```
-   - Mock data mẫu cho userId = 1 (3-4 mục tiêu)
-
-2. Tạo các API functions trong fakeApi.ts:
-   ```typescript
-   async getSavingsGoals(userId: number)
-   // Trả về danh sách mục tiêu của user
-   
-   async getSavingsGoalDetail(userId: number, goalId: number)
-   // Trả về chi tiết 1 mục tiêu + lịch sử đóng góp
-   
-   async createSavingsGoal(userId: number, data: {...})
-   // Tạo mục tiêu mới, trả về goal đã tạo
-   
-   async updateSavingsGoal(userId: number, goalId: number, data: {...})
-   // Cập nhật thông tin mục tiêu
-   
-   async deleteSavingsGoal(userId: number, goalId: number)
-   // Xóa mục tiêu (soft delete: status = 'cancelled')
-   
-   async addContribution(userId: number, goalId: number, amount: number, note?: string)
-   // Thêm tiền vào mục tiêu, tạo contribution record
-   // Cập nhật currentAmount của goal
-   // Nếu đạt 100% → tạo notification
-   ```
-
-Sau session này: Có đầy đủ mock data và API functions, chưa có UI
-
----
-
-### SESSION 1B: Refactor BudgetsScreen và tạo danh sách Mục tiêu
-
-Thời gian: 0.5 ngày
-
-Trước session này: Có API và mock data (Session 1A)
-
-Session này làm gì:
-1. Refactor file `src/screens/budgets/BudgetsScreen.tsx`:
-   - Thêm state: `const [mainTab, setMainTab] = useState<'budgets' | 'goals'>('budgets')`
-   - Thêm SegmentedButtons ở đầu màn hình (sau AppBar):
-     ```tsx
-     <SegmentedButtons
-       value={mainTab}
-       onValueChange={setMainTab}
-       buttons={[
-         { value: 'budgets', label: 'Ngân sách' },
-         { value: 'goals', label: 'Mục tiêu' }
-       ]}
-     />
-     ```
-   - Render conditional: `{mainTab === 'budgets' ? <BudgetContent ...> : <SavingsGoalsContent />}`
-
-2. Đổi tên bottom tab trong `src/navigators/Tabs.tsx`:
-   - "Ngân sách" → "Kế hoạch"
-   - Icon: `cash-multiple` → `target` (hoặc giữ nguyên)
-
-3. Tạo component `src/components/SavingsGoalCard.tsx`:
-   - Props: `goal`, `onPress`
-   - Hiển thị:
-     * Icon và tên mục tiêu (VD: 💻 Mua Laptop)
-     * Progress Bar với % (VD: 15tr/20tr - 75%)
-     * Số tiền còn thiếu: format số
-     * Deadline và số ngày còn lại
-     * Button "Thêm tiền" (mở modal)
-   - Style tương tự BudgetCard hiện tại
-
-4. Tạo component `src/screens/budgets/SavingsGoalsContent.tsx`:
-   - Load data: `const goals = await fakeApi.getSavingsGoals(userId)`
-   - State: loading, goals, refreshing
-   - Hiển thị danh sách goals bằng ScrollView
-   - Mỗi goal render SavingsGoalCard
-   - Empty state nếu chưa có mục tiêu:
-     * Icon lớn
-     * Text: "Chưa có mục tiêu tiết kiệm"
-     * Button "Tạo mục tiêu đầu tiên"
-   - FAB (+) ở góc phải dưới để tạo mục tiêu mới
-   - onPress card → navigate('SavingsGoalDetail', { goalId })
-
-Sau session này: Có UI hiển thị danh sách mục tiêu, chưa có màn hình tạo/sửa/chi tiết
-
----
-
-### SESSION 1C: Màn hình tạo/sửa Mục tiêu
-
-Thời gian: 0.5 ngày
-
-Trước session này: Có danh sách mục tiêu (Session 1B)
-
-Session này làm gì:
-1. Tạo file `src/screens/savings/SavingsGoalCreateScreen.tsx`:
-   - Route params: `{ goalId?: number, editMode?: boolean }`
-   - State: name, targetAmount, currentAmount, deadline, icon, color, loading
-   - Form fields:
-     * TextInput: Tên mục tiêu (required)
-     * TextInput: Số tiền mục tiêu (number, required)
-     * TextInput: Số tiền hiện có (number, default 0)
-     * DatePicker: Ngày muốn đạt được (required)
-     * Icon picker: Chọn icon (grid icons)
-     * Color picker: Chọn màu (danh sách màu preset)
-   - Hiển thị tính toán tự động:
-     * Số tiền cần tiết kiệm mỗi tháng
-     * VD: "(Cần tiết kiệm ~833.000đ/tháng để đạt mục tiêu)"
-   - Button "Tạo mục tiêu" / "Cập nhật"
-   - Validation:
-     * Tên không rỗng
-     * Số tiền mục tiêu > 0
-     * Deadline phải sau hôm nay
-     * currentAmount <= targetAmount
-   - onSubmit:
-     * Gọi `fakeApi.createSavingsGoal()` hoặc `updateSavingsGoal()`
-     * Hiển thị toast thành công
-     * Navigate back
-
-2. Thêm navigation:
-   - Update `src/navigators/RootNavigator.tsx`:
-     ```tsx
-     export type RootStackParamList = {
-       ...
-       SavingsGoalCreate: { goalId?: number };
-       SavingsGoalDetail: { goalId: number };
-     };
-     
-     <Stack.Screen name="SavingsGoalCreate" component={SavingsGoalCreateScreen} />
-     <Stack.Screen name="SavingsGoalDetail" component={SavingsGoalDetailScreen} />
-     ```
-
-Sau session này: Có thể tạo mục tiêu mới, chưa có màn hình chi tiết
-
----
-
-### SESSION 1D: Màn hình chi tiết Mục tiêu
-
-Thời gian: 0.5 ngày
-
-Trước session này: Có thể tạo/sửa mục tiêu (Session 1C)
-
-Session này làm gì:
-1. Tạo file `src/screens/savings/SavingsGoalDetailScreen.tsx`:
-   - Route params: `{ goalId: number }`
-   - Load data: `fakeApi.getSavingsGoalDetail(userId, goalId)`
-   - Trả về: goal info + contributions history
-   
-   Giao diện chi tiết:
-   - Header section:
-     * Icon lớn và tên mục tiêu
-     * Progress circle lớn với %
-     * Đã tiết kiệm / Mục tiêu (format số)
-   
-   - Stats cards (3 cards ngang):
-     * Card 1: Còn thiếu + số tiền
-     * Card 2: Tiến độ + %
-     * Card 3: Deadline + số ngày còn lại
-   
-   - Dự đoán:
-     * "Với tiến độ hiện tại, bạn sẽ đạt mục tiêu vào DD/MM/YYYY"
-     * Nếu chậm: "Cần tăng tốc! Hiện tại chậm hơn kế hoạch X ngày"
-   
-   - Lịch sử đóng góp:
-     * List các contribution
-     * Mỗi item: Ngày + Số tiền + Note
-     * Sort theo thời gian mới nhất
-   
-   - Action buttons:
-     * Button "Thêm tiền" (primary, lớn)
-     * Button "Sửa mục tiêu" (outline)
-     * Button "Xóa mục tiêu" (text, màu đỏ)
-
-2. Modal thêm tiền:
-   - TextInput: Số tiền thêm vào
-   - TextInput: Ghi chú (optional)
-   - Button "Thêm"
-   - onSubmit:
-     * Gọi `fakeApi.addContribution()`
-     * Reload detail
-     * Nếu đạt 100%: Hiển thị celebration modal
-
-Sau session này: Feature Mục tiêu tiết kiệm hoàn chỉnh cơ bản
-
----
-
-### SESSION 1E: Hoàn thiện UI và xử lý trạng thái đặc biệt
-
-Thời gian: 0.5 ngày
-
-Trước session này: Feature Mục tiêu đã hoàn chỉnh cơ bản (Session 1D)
-
-Session này làm gì:
-1. Xử lý các button chưa có action:
-   - Button "Sửa mục tiêu" trong SavingsGoalDetailScreen:
-     * onPress → navigate('SavingsGoalCreate', { goalId, editMode: true })
-     * SavingsGoalCreateScreen load dữ liệu cũ khi editMode = true
-   
-   - Button "Xóa mục tiêu" trong SavingsGoalDetailScreen:
-     * Hiển thị Alert xác nhận: "Bạn có chắc muốn xóa mục tiêu này?"
-     * Nếu đồng ý: gọi `fakeApi.deleteSavingsGoal(userId, goalId)`
-     * Navigate back về danh sách
-     * Hiển thị Snackbar: "Đã xóa mục tiêu"
-   
-   - Button "Thêm tiền" trong SavingsGoalCard (màn danh sách):
-     * Mở modal nhanh để thêm tiền (không cần vào chi tiết)
-     * Modal giống trong DetailScreen
-     * Sau khi thêm thành công: refresh danh sách
-
-2. Xử lý trạng thái đặc biệt của mục tiêu:
-   
-   **Trạng thái 1: Đã đạt mục tiêu (completed)**
-   - SavingsGoalCard:
-     * Background màu xanh nhạt (#E8F5E9)
-     * Icon check ✓ ở góc
-     * Progress bar 100% màu xanh
-     * Text "Đã đạt mục tiêu!" thay vì "Còn thiếu X đ"
-     * Button "Thêm tiền" ẩn đi
-     * Badge "Hoàn thành" màu xanh
-   
-   - SavingsGoalDetailScreen:
-     * Header: Hiển thị confetti animation hoặc icon celebration
-     * Stats: Highlight "Đã đạt 100%"
-     * Dự đoán: "Chúc mừng! Bạn đã đạt mục tiêu!"
-     * Button "Thêm tiền" → đổi thành "Tiếp tục tiết kiệm" (vẫn cho phép thêm)
-     * Suggestion: "Bạn có muốn tạo mục tiêu mới?"
-   
-   **Trạng thái 2: Quá hạn (overdue)**
-   - Điều kiện: deadline < today && status === 'active' && currentAmount < targetAmount
-   
-   - SavingsGoalCard:
-     * Border màu đỏ nhạt
-     * Icon cảnh báo 
-     * Text màu đỏ: "Quá hạn X ngày"
-     * Badge "Quá hạn" màu đỏ
-     * Progress bar màu đỏ/cam
-   
-   - SavingsGoalDetailScreen:
-     * Card deadline: Background màu đỏ nhạt
-     * Text: "Đã quá hạn X ngày"
-     * Dự đoán: "Mục tiêu đã quá hạn. Bạn có muốn gia hạn deadline?"
-     * Thêm button "Gia hạn deadline" → mở DatePicker
-     * Suggestion: "Xem xét điều chỉnh mục tiêu hoặc gia hạn thời gian"
-   
-   **Trạng thái 3: Sắp đến hạn (deadline trong 7 ngày)**
-   - SavingsGoalCard:
-     * Border màu vàng/cam
-     * Icon 
-     * Text màu cam: "Còn X ngày"
-     * Badge "Gấp" màu cam
-   
-   - SavingsGoalDetailScreen:
-     * Card deadline: Background màu vàng nhạt
-     * Text nổi bật: "Chỉ còn X ngày!"
-     * Dự đoán nếu chậm: "Cần thêm Y đ/ngày để kịp deadline"
-
-3. Thêm filter/sort trong danh sách:
-   - Tabs trong SavingsGoalsContent:
-     * [Đang tiến hành] (active)
-     * [Đã đạt] (completed)
-     * [Tất cả]
-   
-   - Sort options (dropdown hoặc chip):
-     * Mới nhất
-     * Sắp đến hạn
-     * Tiến độ cao nhất
-     * Tiến độ thấp nhất
-
-4. Animation và feedback:
-   - Khi thêm tiền thành công:
-     * Progress bar animate từ % cũ → % mới
-     * Haptic feedback (rung nhẹ)
-     * Snackbar: "Đã thêm X đ vào mục tiêu"
-   
-   - Khi đạt 100%:
-     * Modal celebration với animation
-     * Text: "Chúc mừng! Bạn đã đạt mục tiêu [Tên mục tiêu]!"
-     * Confetti hoặc lottie animation
-     * Button "Tuyệt vời!" để đóng
-
-5. Empty states cải tiến:
-   - Tab "Đã đạt" khi chưa có:
-     * Icon 
-     * Text: "Chưa có mục tiêu nào hoàn thành"
-     * "Hãy cố gắng đạt mục tiêu đầu tiên!"
-   
-   - Lịch sử đóng góp trống:
-     * Icon 
-     * Text: "Chưa có đóng góp nào"
-     * "Bắt đầu thêm tiền vào mục tiêu nhé!"
-
-Sau session này: Feature Mục tiêu tiết kiệm hoàn chỉnh 100%, xử lý đầy đủ các trường hợp đặc biệt
-
----
-
-### SESSION 1F: Refactor Navigation - Tạo màn hình Công cụ
-
-Thời gian: 0.5 ngày
-
-Trước session này: Ngân sách và Mục tiêu đang gộp chung trong 1 tab (Session 1E)
-
-Lý do refactor: 
-- Ngân sách và Mục tiêu không liên quan trực tiếp nhau lắm
-- Cần tách riêng để dễ mở rộng thêm công cụ khác
-- UX tốt hơn khi có màn hình tổng hợp các công cụ quản lý
-
-Session này làm gì:
-1. Tạo màn hình Công cụ mới `src/screens/tools/ToolsScreen.tsx`:
-   - Layout: Grid 2 cột, các card công cụ hình vuông
-   - Mỗi card có:
-     * Icon lớn (MaterialCommunityIcons)
-     * Tên công cụ
-     * Mô tả ngắn (1 dòng)
-     * Ripple effect khi nhấn
-   
-   Danh sách công cụ hiển thị dạng grid 2 cột:
-   - Hàng 1: [Ngân sách] [Mục tiêu]
-   - Hàng 2: [Chi định kỳ] [Gợi ý tiết kiệm]
-   
-   Code structure:
-   ```typescript
-   const tools = [
-     {
-       id: 'budgets',
-       icon: 'wallet-outline',
-       name: 'Ngân sách',
-       description: 'Quản lý chi tiêu theo kế hoạch',
-       color: '#FF8A00',
-       onPress: () => navigation.navigate('Budgets')
-     },
-     {
-       id: 'savings',
-       icon: 'target',
-       name: 'Mục tiêu tiết kiệm',
-       description: 'Tiết kiệm cho tương lai',
-       color: '#4CAF50',
-       onPress: () => navigation.navigate('SavingsGoals')
-     },
-     {
-       id: 'recurring',
-       icon: 'refresh-circle',
-       name: 'Chi tiêu định kỳ',
-       description: 'Dự báo & nhắc nhở chi phí',
-       color: '#2196F3',
-       onPress: () => navigation.navigate('RecurringExpenses')
-     },
-     {
-       id: 'recommendations',
-       icon: 'lightbulb-outline',
-       name: 'Gợi ý tiết kiệm',
-       description: 'Phân tích và tiết kiệm',
-       color: '#FFC107',
-       onPress: () => navigation.navigate('Recommendations')
-     }
-   ];
-   ```
-
-2. Refactor Navigation structure:
-   - Update `src/navigators/Tabs.tsx`:
-     * Đổi tab "Kế hoạch" → "Công cụ" (Tools)
-     * Icon: `briefcase-outline` hoặc `toolbox-outline`
-     * Component: ToolsScreen
-   
-   - Update `src/navigators/RootNavigator.tsx`:
-     * Thêm các màn hình mới vào Stack:
-     ```typescript
-     export type RootStackParamList = {
-       ...
-       Tools: undefined;
-       Budgets: undefined;
-       SavingsGoals: undefined;
-       SavingsGoalCreate: { goalId?: number };
-       SavingsGoalDetail: { goalId: number };
-     };
-     
-     <Stack.Screen name="Tools" component={ToolsScreen} />
-     <Stack.Screen name="Budgets" component={BudgetsScreen} />
-     <Stack.Screen name="SavingsGoals" component={SavingsGoalsScreen} />
-     ```
-
-3. Refactor BudgetsScreen:
-   - Xóa SegmentedButtons ([Ngân sách] [Mục tiêu])
-   - Chỉ giữ lại phần Ngân sách
-   - Loại bỏ logic render conditional
-   - AppBar title: "Ngân sách"
-
-4. Tạo màn hình SavingsGoals độc lập:
-   - Tạo file `src/screens/savings/SavingsGoalsScreen.tsx`
-   - Copy toàn bộ code từ component SavingsGoalsContent
-   - Thêm AppBar với title "Mục tiêu tiết kiệm"
-   - Thêm back button
-   - File `src/screens/budgets/SavingsGoalsContent.tsx` có thể xóa
-
-5. Style cho ToolCard component:
-   ```typescript
-   interface ToolCardProps {
-     icon: string;
-     name: string;
-     description: string;
-     color: string;
-     onPress: () => void;
-   }
-   
-   const ToolCard = ({ icon, name, description, color, onPress }) => (
-     <Card style={styles.toolCard} onPress={onPress}>
-       <Card.Content style={styles.toolCardContent}>
-         <View style={[styles.iconContainer, { backgroundColor: color + '20' }]}>
-           <MaterialCommunityIcons 
-             name={icon} 
-             size={40} 
-             color={color} 
-           />
-         </View>
-         <Text style={styles.toolName}>{name}</Text>
-         <Text style={styles.toolDescription}>{description}</Text>
-       </Card.Content>
-     </Card>
-   );
-   
-   const styles = StyleSheet.create({
-     grid: {
-       padding: 16,
-       flexDirection: 'row',
-       flexWrap: 'wrap',
-       justifyContent: 'space-between',
-     },
-     toolCard: {
-       width: '48%',
-       marginBottom: 16,
-       minHeight: 160,
-     },
-     toolCardContent: {
-       alignItems: 'center',
-       paddingVertical: 20,
-     },
-     iconContainer: {
-       width: 70,
-       height: 70,
-       borderRadius: 35,
-       justifyContent: 'center',
-       alignItems: 'center',
-       marginBottom: 12,
-     },
-     toolName: {
-       fontSize: 16,
-       fontWeight: '600',
-       textAlign: 'center',
-       marginBottom: 4,
-     },
-     toolDescription: {
-       fontSize: 12,
-       color: '#666',
-       textAlign: 'center',
-     },
-   });
-   ```
-
-6. Header section (optional):
-   - Thêm header text ở đầu ToolsScreen
-   - Hiển thị quick stats: số ngân sách đang hoạt động, số mục tiêu đang theo dõi
-
-Sau session này: 
-- Navigation rõ ràng hơn, Ngân sách và Mục tiêu tách riêng
-- Có màn hình Công cụ tổng hợp dạng grid, dễ mở rộng
-- UX tốt hơn với layout trực quan
-
----
-
-## FEATURE 2: DỰ BÁO CHI TIÊU TÁI DIỄN (RECURRING EXPENSES)
-
-### SESSION 2A: Mock Data và API phát hiện chi tiêu định kỳ
-
-Thời gian dự kiến: 2 ngày
-
-Nội dung:
-1. Bổ sung API vào fakeApi.ts
-   - detectRecurringExpenses: Thuật toán phát hiện pattern
-   - getRecurringExpenses
-   - createRecurringExpense
-   - updateRecurringExpense
-   - deleteRecurringExpense
-   - predictNextMonthExpenses
-
-2. Thuật toán phát hiện chi tiêu lặp lại
-   - Phân tích giao dịch theo tên, số tiền, danh mục
-   - Phát hiện pattern: hàng ngày, hàng tuần, hàng tháng
-   - Tính độ tin cậy của dự đoán
-
-3. Tạo màn hình
-   - RecurringExpensesScreen.tsx: Danh sách chi tiêu định kỳ
-   - Form thêm chi tiêu định kỳ thủ công
-   - Cài đặt nhắc nhở
-
-4. Tích hợp thông báo
-   - Nhắc nhở trước khi đến hạn thanh toán
-   - Nhắc nhở khi phát hiện pattern mới
-
-Kết quả mong đợi:
-- Tự động phát hiện các khoản chi định kỳ
-- Dự báo chi tiêu tháng tới
-- Nhắc nhở người dùng kịp thời
-
----
-
-### SESSION 3: GỢI Ý TIẾT KIỆM VÀ INSIGHTS (Ưu tiên trung bình)
+### SESSION 3: GỢI Ý TIẾT KIỆM VÀ INSIGHTS
 
 Thời gian dự kiến: 1-2 ngày
 
@@ -716,72 +124,6 @@ Nội dung:
 Kết quả mong đợi:
 - Người dùng nhận được gợi ý tiết kiệm thông minh
 - Phát hiện thói quen chi tiêu bất hợp lý
-
----
-
-### SESSION 4: CHATBOT TÀI CHÍNH (Ưu tiên trung bình)
-
-Thời gian dự kiến: 2-3 ngày
-
-Nội dung:
-1. Bổ sung API vào fakeApi.ts
-   - sendChatMessage (simulate hoặc tích hợp OpenAI)
-   - getChatHistory
-   - getFAQs
-
-2. Tạo màn hình ChatbotScreen.tsx
-   - Giao diện chat (bubble messages)
-   - Input box để gửi tin nhắn
-   - Hiển thị typing indicator
-   - Lịch sử chat
-
-3. Tích hợp AI (nếu có thời gian)
-   - Kết nối OpenAI API
-   - Context về dữ liệu tài chính của user
-   - Xử lý các câu hỏi phổ biến
-
-4. Fallback với FAQ
-   - Danh sách câu hỏi thường gặp
-   - Câu trả lời có sẵn
-
-Kết quả mong đợi:
-- Chatbot có thể trả lời câu hỏi về chi tiêu
-- Gợi ý lập kế hoạch tài chính
-
----
-
-### SESSION 5: XUẤT BÁO CÁO PDF/EXCEL (Ưu tiên trung bình)
-
-Thời gian dự kiến: 2 ngày
-
-Nội dung:
-1. Cài đặt thư viện
-   - react-native-html-to-pdf
-   - xlsx
-   - react-native-fs
-   - react-native-share
-
-2. Bổ sung API vào fakeApi.ts
-   - exportReportPDF
-   - exportReportExcel
-   - generateHTMLReport (template)
-
-3. Tạo màn hình ReportExportScreen.tsx
-   - Chọn loại báo cáo
-   - Chọn khoảng thời gian
-   - Preview trước khi xuất
-   - Nút xuất và chia sẻ
-
-4. Logic xuất file
-   - Tạo HTML template cho PDF
-   - Tạo Excel với số liệu chi tiết
-   - Lưu vào thư mục Downloads
-   - Chia sẻ qua email/app khác
-
-Kết quả mong đợi:
-- Xuất được báo cáo PDF với biểu đồ
-- Xuất được Excel với dữ liệu chi tiết
-- Chia sẻ báo cáo dễ dàng
 
 ---
 
@@ -858,11 +200,10 @@ Kết quả mong đợi:
 
 ## TỔNG KẾT THỜI GIAN
 
-Dự kiến tổng thời gian: 14-20 ngày làm việc (3-4 tuần)
+Dự kiến tổng thời gian còn lại: 3-5 ngày làm việc
 
 Phân bổ:
-- Session 1-2 (Mục tiêu, Dự báo): 4 ngày - CORE FEATURES từ đề cương
-- Session 3-5 (Gợi ý, Chatbot, Export): 6-7 ngày - TÍNH NĂNG ĐẶC BIỆT từ đề cương
+- Session 3 (Gợi ý tiết kiệm): 1-2 ngày
 - Session 6 (Testing): 2-3 ngày - BẮT BUỘC
 - Session 7 (Hoàn thiện & Báo cáo): 3-4 ngày - BẮT BUỘC
 
@@ -870,38 +211,23 @@ Phân bổ:
 
 ## ƯU TIÊN THỰC HIỆN
 
-Theo đúng yêu cầu đề cương (đã loại bỏ Báo cáo vì Dashboard đã đủ):
-
-1. SESSION 1: Mục tiêu tiết kiệm
-   Lý do: Tính năng đặc biệt theo phạm vi nghiên cứu, liên quan mật thiết với Ngân sách
-
-2. SESSION 2: Dự báo chi tiêu tái diễn
-   Lý do: Tính năng đặc biệt, điểm khác biệt so với app hiện có
-
-3. SESSION 3: Gợi ý tiết kiệm
+1. SESSION 3: Gợi ý tiết kiệm
    Lý do: Tính năng nâng cao, ứng dụng AI theo đề cương
 
-4. SESSION 4: Chatbot tài chính
-   Lý do: Tính năng nâng cao, điểm mạnh đáng chú ý theo đề cương
-
-5. SESSION 5: Xuất báo cáo PDF/Excel
-   Lý do: Tính năng bổ trợ, nằm trong kết quả dự kiến
-
-6. SESSION 6: Testing
+2. SESSION 6: Testing
    Lý do: Bắt buộc để đảm bảo chất lượng
 
-7. SESSION 7: Hoàn thiện và Báo cáo
+3. SESSION 7: Hoàn thiện và Báo cáo
    Lý do: Bắt buộc để hoàn tất đồ án
 
 ---
 
 ## GHI CHÚ
 
-- Báo cáo và biểu đồ KHÔNG cần làm thêm vì Dashboard đã có đủ (BarChart, PieChart, Top Categories, So sánh)
-- Tập trung 100% vào 5 tính năng còn thiếu theo đề cương
+- Báo cáo và biểu đồ không cần làm thêm vì Dashboard đã có đủ (BarChart, PieChart, Top Categories, So sánh)
+- Đã hoàn thành 4/5 tính năng theo đề cương: Mục tiêu tiết kiệm, Dự báo chi tiêu tái diễn, Chatbot tài chính, Xuất báo cáo CSV
+- Còn thiếu: Gợi ý tiết kiệm thông minh
 - AI và OCR giữ nguyên dạng simulate vì đã đáp ứng yêu cầu thử nghiệm
-- Mỗi session bám sát mục tiêu trong phần "Kết quả dự kiến đạt được" của đề cương
-- Session 1-5 là các tính năng chính cần triển khai
+- Session 3 là tính năng cuối cùng cần triển khai
 - Session 6-7 là giai đoạn hoàn thiện và báo cáo
-- Tiết kiệm được 2-3 ngày nhờ không phải làm lại màn hình Báo cáo
 

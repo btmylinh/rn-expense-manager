@@ -79,6 +79,14 @@ export default function ToolsScreen() {
 			description: 'Hỏi đáp & gợi ý chi tiêu',
 			color: '#7C3AED',
 			onPress: () => navigation.navigate('Chatbot')
+		},
+		{
+			id: 'report',
+			icon: 'file-export',
+			name: 'Xuất báo cáo',
+			description: 'Xuất CSV & chia sẻ báo cáo',
+			color: '#06B6D4',
+			onPress: () => navigation.navigate('ReportExport')
 		}
 	];
 
