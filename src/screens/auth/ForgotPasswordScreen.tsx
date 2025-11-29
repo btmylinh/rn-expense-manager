@@ -2,8 +2,10 @@
 import React, { useState } from 'react';
 import { View } from 'react-native';
 import { Button, TextInput, HelperText, Text } from 'react-native-paper';
-import { fakeApi } from '../../services/fakeApi';
+import { isAxiosError } from 'axios';
+import { authApi } from '../../api/authApi';
 import { useAppTheme } from '../../theme';
+import { getErrorMessage } from '../../utils/errorHandler';
 
 export default function ForgotPasswordScreen({ navigation }: any) {
 	const theme = useAppTheme();
@@ -16,14 +18,10 @@ export default function ForgotPasswordScreen({ navigation }: any) {
 		setError(null);
 		try {
 			setLoading(true);
-			const result = await fakeApi.resetPassword(email);
-			if (result.success) {
-				setDone(true);
-			} else {
-				setError(result.message);
-			}
-		} catch (e: any) {
-			setError(e.message ?? 'Đã xảy ra lỗi');
+			await authApi.forgotPassword({ email: email.trim().toLowerCase() });
+			setDone(true);
+		} catch (error) {
+			setError(getErrorMessage(error, 'Đã xảy ra lỗi'));
 		} finally {
 			setLoading(false);
 		}

@@ -4,10 +4,14 @@ import { Button, ProgressBar, Divider } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LineChart } from 'react-native-gifted-charts';
 import { useAppTheme, getIconColor } from '../../theme';
-import { fakeApi } from '../../services/fakeApi';
+import { budgetApi } from '../../api/budgetApi';
+import { userCategoryApi } from '../../api/userCategoryApi';
+import { walletApi } from '../../api/walletApi';
+import { transactionApi } from '../../api/transactionApi';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigators/RootNavigator';
 import AppBar from '../../components/AppBar';
+import { getErrorMessage } from '../../utils/errorHandler';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'BudgetDetail'>;
 
@@ -20,8 +24,6 @@ export default function BudgetDetailScreen({ navigation, route }: Props) {
   const [transactions, setTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const userId = 1;
-
   useEffect(() => {
     loadBudgetDetail();
   }, [budgetId]);
@@ -29,9 +31,9 @@ export default function BudgetDetailScreen({ navigation, route }: Props) {
   const loadBudgetDetail = async () => {
     try {
       setLoading(true);
-      // Load budget data
-      const budgets = await fakeApi.getBudgets(userId);
-      const budgetData = budgets.find((b: any) => b.id === budgetId);
+      // Load budget data by ID
+      const budgetResponse = await budgetApi.getBudgetById(budgetId);
+      const budgetData = budgetResponse.data?.data;
       
       if (!budgetData) {
         Alert.alert('Lỗi', 'Không tìm thấy ngân sách');
@@ -39,22 +41,66 @@ export default function BudgetDetailScreen({ navigation, route }: Props) {
         return;
       }
 
-      setBudget(budgetData);
+      // Load category and wallet
+      const [categoryResponse, walletResponse, transactionsResponse] = await Promise.all([
+        userCategoryApi.getCategoryById(budgetData.user_category_id),
+        walletApi.getWalletById(budgetData.wallet_id),
+        transactionApi.getTransactions({
+          wallet_id: budgetData.wallet_id,
+          user_category_id: budgetData.user_category_id,
+          type: 2, // Only expenses
+          start_date: budgetData.start_date,
+          end_date: budgetData.end_date,
+          limit: 1000,
+        }),
+      ]);
 
-      // Load category
-      const categories = await fakeApi.getUserCategories(userId);
-      const categoryData = categories.find((c: any) => c.id === budgetData.userCategoryId);
-      setCategory(categoryData);
+      setCategory(categoryResponse.data?.data);
+      setWallet(walletResponse.data?.wallet);
 
-      // Load wallet
-      const walletData = await fakeApi.getWallet(userId, budgetData.walletId);
-      setWallet((walletData as any)?.wallet);
+      // Calculate spent from transactions
+      const transactions = transactionsResponse.data?.data?.transactions || [];
+      const spent = transactions.reduce((sum: number, tx: any) => sum + Number(tx.amount), 0);
+      setTransactions(transactions);
 
-      // Transactions data is now included in budget.chartData from API
-      setTransactions([]); // Not needed anymore
+      // Generate chart data from transactions (group by date)
+      const chartDataMap = new Map<string, number>();
+      transactions.forEach((tx: any) => {
+        const date = new Date(tx.transaction_date).toISOString().split('T')[0];
+        const current = chartDataMap.get(date) || 0;
+        chartDataMap.set(date, current + Number(tx.amount));
+      });
 
-    } catch (error) {
-      Alert.alert('Lỗi', 'Không thể tải dữ liệu ngân sách');
+      // Fill all dates in range with cumulative spending
+      const startDate = new Date(budgetData.start_date);
+      const endDate = new Date(budgetData.end_date);
+      const chartData: Array<{ date: string; value: number }> = [];
+      let cumulative = 0;
+      
+      for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+        const dateStr = d.toISOString().split('T')[0];
+        const daySpent = chartDataMap.get(dateStr) || 0;
+        cumulative += daySpent;
+        chartData.push({ date: dateStr, value: cumulative });
+      }
+
+      // Map backend fields to frontend format
+      const mappedBudget = {
+        ...budgetData,
+        startDate: budgetData.start_date,
+        endDate: budgetData.end_date,
+        userCategoryId: budgetData.user_category_id,
+        walletId: budgetData.wallet_id,
+        amount: Number(budgetData.amount),
+        isRepeat: budgetData.is_repeat,
+        spent,
+        chartData,
+      };
+
+      setBudget(mappedBudget);
+
+    } catch (error: any) {
+      Alert.alert('Lỗi', getErrorMessage(error, 'Không thể tải dữ liệu ngân sách'));
     } finally {
       setLoading(false);
     }
@@ -79,10 +125,10 @@ export default function BudgetDetailScreen({ navigation, route }: Props) {
           style: 'destructive',
           onPress: async () => {
             try {
-              await fakeApi.deleteBudget(userId, budgetId);
+              await budgetApi.deleteBudget(budgetId);
               navigation.goBack();
-            } catch (error) {
-              Alert.alert('Lỗi', 'Không thể xóa ngân sách');
+            } catch (error: any) {
+              Alert.alert('Lỗi', getErrorMessage(error, 'Không thể xóa ngân sách'));
             }
           },
         },

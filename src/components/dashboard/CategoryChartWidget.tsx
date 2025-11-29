@@ -70,25 +70,43 @@ const CategoryChartWidget = ({ data, totalAmount }: CategoryChartWidgetProps) =>
 							}}
 						/>
 						<View style={styles.pieChartLegend}>
-							{data.map((item) => {
+							{/* Chia legend thành 2-3 cột tùy số lượng */}
+							{(() => {
+								const itemsPerColumn = data.length > 10 ? Math.ceil(data.length / 3) : Math.ceil(data.length / 2);
+								const columns: any[][] = [];
+								for (let i = 0; i < data.length; i += itemsPerColumn) {
+									columns.push(data.slice(i, i + itemsPerColumn));
+								}
+								
 								return (
-									<View key={item.category.id} style={styles.legendItem}>
-										<View style={[styles.legendColor, { backgroundColor: item.color }]} />
-										<MaterialCommunityIcons
-											name={(item.category.icon as any) || 'tag-outline'}
-											size={16}
-											color={getIconColor(item.category.icon, theme)}
-											style={styles.legendIcon}
-										/>
-										<Text style={[styles.legendText, { color: theme.colors.onSurface }]} numberOfLines={1}>
-											{item.category.name}
-										</Text>
-										<Text style={[styles.legendAmount, { color: theme.colors.onSurfaceVariant }]}>
-											{item.text}
-										</Text>
+									<View style={styles.legendColumns}>
+										{columns.map((column, colIndex) => (
+											<View key={colIndex} style={styles.legendColumn}>
+												{column.map((item, index) => {
+													return (
+														<View key={item.category.id || `item-${colIndex}-${index}`} style={styles.legendItem}>
+															<MaterialCommunityIcons
+																name={(item.category.icon as any) || 'tag-outline'}
+																size={16}
+																color={getIconColor(item.category.icon, theme)}
+																style={styles.legendIcon}
+															/>
+															<View style={styles.legendTextContainer}>
+																<Text style={[styles.legendText, { color: theme.colors.onSurface }]} numberOfLines={1}>
+																	{item.category.name}
+																</Text>
+																<Text style={[styles.legendAmount, { color: theme.colors.onSurfaceVariant }]} numberOfLines={1}>
+																	{item.text}
+																</Text>
+															</View>
+														</View>
+													);
+												})}
+											</View>
+										))}
 									</View>
 								);
-							})}
+							})()}
 						</View>
 					</View>
 				) : (
@@ -155,26 +173,34 @@ const styles = StyleSheet.create({
 		marginTop: 16,
 		width: '100%',
 	},
+	legendColumns: {
+		flexDirection: 'row',
+		justifyContent: 'space-between',
+		flexWrap: 'wrap',
+	},
+	legendColumn: {
+		flex: 1,
+		minWidth: '45%',
+		marginBottom: 8,
+	},
 	legendItem: {
 		flexDirection: 'row',
 		alignItems: 'center',
-		marginBottom: 12,
-	},
-	legendColor: {
-		width: 16,
-		height: 16,
-		borderRadius: 8,
-		marginRight: 8,
+		marginBottom: 8,
+		paddingRight: 8,
 	},
 	legendIcon: {
 		marginRight: 8,
 	},
-	legendText: {
+	legendTextContainer: {
 		flex: 1,
-		fontSize: 14,
+	},
+	legendText: {
+		fontSize: 12,
+		marginBottom: 2,
 	},
 	legendAmount: {
-		fontSize: 14,
+		fontSize: 11,
 		fontWeight: '600',
 	},
 	emptyChart: {

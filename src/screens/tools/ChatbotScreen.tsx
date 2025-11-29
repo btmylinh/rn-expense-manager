@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Button, IconButton, Text, TextInput } from 'react-native-paper';
-import { FlatList, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, FlatList, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import AppBar from '../../components/AppBar';
 import { useAppTheme } from '../../theme';
 import { useAuth } from '../../contexts/AuthContext';
-import { fakeApi } from '../../services/fakeApi';
+import { chatApi } from '../../api/chatApi';
 
 type ChatRole = 'user' | 'assistant' | 'system';
 
@@ -37,7 +37,7 @@ export default function ChatbotScreen() {
 	const theme = useAppTheme();
 	const navigation = useNavigation();
 	const { user } = useAuth();
-	const userId = user?.id || fakeApi.getCurrentUserId() || 1;
+	const userId = user?.id;
 	const [loading, setLoading] = useState(true);
 	const [sending, setSending] = useState(false);
 	const [typing, setTyping] = useState(false);
@@ -58,23 +58,38 @@ const APP_BAR_HEIGHT = 48;
 	const loadInitialData = useCallback(async () => {
 		try {
 			const [historyRes, faqRes] = await Promise.all([
-				fakeApi.getChatHistory(userId),
-				fakeApi.getFAQs(),
+				chatApi.getHistory({ limit: 100 }),
+				chatApi.getFAQs(),
 			]);
-			if (historyRes.success) {
-				setMessages(historyRes.data as ChatMessage[]);
-			}
-			if (faqRes.success) {
-				setFaqs(faqRes.data as ChatFaq[]);
-				setSuggestions((faqRes.data as ChatFaq[]).slice(0, 3).map(faq => faq.question));
-			}
+			const messagesData = historyRes.data?.data?.messages || [];
+			const faqsData = faqRes.data?.data || [];
+			
+			// Map backend fields to frontend format
+			const mappedMessages: ChatMessage[] = messagesData.map((msg: any) => ({
+				id: msg.id,
+				userId: msg.user_id,
+				role: msg.role,
+				content: msg.content,
+				createdAt: msg.created_at,
+				metadata: msg.metadata,
+			}));
+			setMessages(mappedMessages);
+			
+			const mappedFaqs: ChatFaq[] = faqsData.map((faq: any) => ({
+				id: faq.id,
+				question: faq.question,
+				answer: faq.answer,
+				tags: faq.tags || [],
+			}));
+			setFaqs(mappedFaqs);
+			setSuggestions(mappedFaqs.slice(0, 3).map(faq => faq.question));
 		} catch (error) {
 			console.error('Failed to load chatbot data', error);
 		} finally {
 			setLoading(false);
 			setTimeout(scrollToBottom, 150);
 		}
-	}, [scrollToBottom, userId]);
+	}, [scrollToBottom]);
 
 	useEffect(() => {
 		loadInitialData();
@@ -85,11 +100,22 @@ const APP_BAR_HEIGHT = 48;
 	}, [messages, scrollToBottom]);
 
 	const refreshHistory = useCallback(async () => {
-		const res = await fakeApi.getChatHistory(userId);
-		if (res.success) {
-			setMessages(res.data as ChatMessage[]);
+		try {
+			const res = await chatApi.getHistory({ limit: 100 });
+			const messagesData = res.data?.data?.messages || [];
+			const mappedMessages: ChatMessage[] = messagesData.map((msg: any) => ({
+				id: msg.id,
+				userId: msg.user_id,
+				role: msg.role,
+				content: msg.content,
+				createdAt: msg.created_at,
+				metadata: msg.metadata,
+			}));
+			setMessages(mappedMessages);
+		} catch (error) {
+			console.error('Failed to refresh chat history', error);
 		}
-	}, [userId]);
+	}, []);
 
 	const sendMessage = useCallback(async (content: string) => {
 		const trimmed = content.trim();
@@ -97,6 +123,10 @@ const APP_BAR_HEIGHT = 48;
 		setSending(true);
 		setTyping(true);
 		setInput('');
+		if (!userId) {
+			Alert.alert('Lỗi', 'Vui lòng đăng nhập để sử dụng tính năng này');
+			return;
+		}
 		const tempMessage: ChatMessage = {
 			id: `temp-${Date.now()}`,
 			userId,
@@ -106,10 +136,10 @@ const APP_BAR_HEIGHT = 48;
 		};
 		setMessages(prev => [...prev, tempMessage]);
 		try {
-			const response = await fakeApi.sendChatMessage(userId, trimmed);
-			if (response.success) {
-				const data = response.data as ChatResponse;
-				setSuggestions(data.suggestions || suggestions);
+			const response = await chatApi.sendMessage({ content: trimmed });
+			const responseData = response.data?.data;
+			if (responseData) {
+				setSuggestions(responseData.suggestions || suggestions);
 			}
 			await refreshHistory();
 		} catch (error) {
@@ -118,7 +148,7 @@ const APP_BAR_HEIGHT = 48;
 			setTyping(false);
 			setSending(false);
 		}
-	}, [refreshHistory, sending, suggestions, userId]);
+	}, [refreshHistory, sending, suggestions]);
 
 	const handleSend = () => {
 		sendMessage(input);

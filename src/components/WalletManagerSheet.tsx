@@ -2,8 +2,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Alert, ScrollView, Platform } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { Button, Divider, IconButton, Modal, Portal, Text, TextInput, Chip, List, Menu } from 'react-native-paper';
-
-import { fakeApi } from '../services/fakeApi';
+import { walletApi } from '../api/walletApi';
+import { getErrorMessage } from '../utils/errorHandler';
+import { transactionApi } from '../api/transactionApi';
+import { TRANSFER_CATEGORY, getTodayDate } from '../common/transactionCategories';
 
 interface Props {
     userId: number;
@@ -12,9 +14,26 @@ interface Props {
     onWalletChanged?: (walletId: number) => void;
 }
 
+const extractWallets = (response: any) => {
+    const root = response?.data ?? response;
+    const list =
+        root?.data?.wallets ??
+        root?.data?.data?.wallets ??
+        root?.wallets ??
+        root?.data ??
+        [];
+
+    if (!Array.isArray(list)) return [];
+    return list.map((wallet) => ({
+        ...wallet,
+        amount: Number(wallet.amount ?? wallet.balance ?? 0),
+        currency: wallet.currency || 'VND',
+    }));
+};
+
 export default function WalletManagerSheet({ userId, visible, onDismiss, onWalletChanged }: Props) {
     const [loading, setLoading] = useState(false);
-    const [wallets, setWallets] = useState<Array<{ id: number, name: string, currency: string, amount: number, is_default?: boolean }>>([]);
+    const [wallets, setWallets] = useState<Array<{ id: number, name: string, currency: string, amount: number, is_default?: number | boolean }>>([]);
     const [currentWalletId, setCurrentWalletId] = useState<number | undefined>(undefined);
     const [createVisible, setCreateVisible] = useState(false);
     const [editVisible, setEditVisible] = useState(false);
@@ -44,13 +63,16 @@ export default function WalletManagerSheet({ userId, visible, onDismiss, onWalle
         (async () => {
             setLoading(true);
             try {
-                const [ws, cw] = await Promise.all([
-                    fakeApi.getWallets(userId),
-                    fakeApi.getCurrentWalletId(userId),
-                ]);
+                const response = await walletApi.getWallets();
+                const walletsData = extractWallets(response);
                 if (!mounted) return;
-                setWallets(ws as any);
-                setCurrentWalletId((cw as any)?.walletId);
+                setWallets(walletsData);
+                // Set current wallet to default wallet or first wallet
+                const defaultWallet = walletsData.find((w: any) => w.is_default === 1);
+                setCurrentWalletId(defaultWallet?.id || walletsData[0]?.id);
+            } catch (error) {
+                console.error('Error loading wallets:', error);
+                Alert.alert('Lỗi', 'Không thể tải danh sách ví');
             } finally {
                 setLoading(false);
             }
@@ -73,10 +95,15 @@ export default function WalletManagerSheet({ userId, visible, onDismiss, onWalle
     const canSubmit = () => name.trim().length >= 2 && parseFormattedNumber(amount) >= 0;
 
     const refreshWallets = async () => {
-        const ws = await fakeApi.getWallets(userId);
-        setWallets(ws as any);
-        const cw = await fakeApi.getCurrentWalletId(userId);
-        setCurrentWalletId((cw as any)?.walletId);
+        try {
+            const response = await walletApi.getWallets();
+            const walletsData = extractWallets(response);
+            setWallets(walletsData);
+            const defaultWallet = walletsData.find((w: any) => w.is_default === 1);
+            setCurrentWalletId(defaultWallet?.id || walletsData[0]?.id);
+        } catch (error) {
+            console.error('Error refreshing wallets:', error);
+        }
     };
 
     const openEditWallet = (wallet: any) => {
@@ -93,17 +120,16 @@ export default function WalletManagerSheet({ userId, visible, onDismiss, onWalle
         }
         try {
             setLoading(true);
-            const res = await fakeApi.updateWallet(userId, editingWalletId, {
+            await walletApi.updateWallet(editingWalletId, {
                 name: editName.trim(),
                 currency: editCurrency
             });
-            if (!(res as any).success) {
-                Alert.alert('Lỗi', (res as any).message || 'Không thể cập nhật ví');
-                return;
-            }
             await refreshWallets();
             setEditVisible(false);
             Alert.alert('Thành công', 'Đã cập nhật ví');
+        } catch (error: any) {
+            console.error('Error updating wallet:', error);
+            Alert.alert('Lỗi', getErrorMessage(error, 'Không thể cập nhật ví'));
         } finally {
             setLoading(false);
         }
@@ -121,6 +147,44 @@ export default function WalletManagerSheet({ userId, visible, onDismiss, onWalle
         setTransferVisible(true);
     };
 
+    const logTransferTransactions = async ({
+        fromId,
+        toId,
+        amount,
+        note,
+    }: {
+        fromId: number;
+        toId: number;
+        amount: number;
+        note?: string;
+    }) => {
+        const date = getTodayDate();
+        const baseNote = note?.trim();
+        const contentBase = baseNote || 'Chuyển tiền giữa ví';
+
+        const fromTransaction = transactionApi.createTransaction({
+            wallet_id: fromId,
+            user_category_id: TRANSFER_CATEGORY.OUT.id,
+            amount,
+            transaction_date: date,
+            content: `${contentBase}`,
+            note: baseNote,
+            type: TRANSFER_CATEGORY.OUT.type,
+        });
+
+        const toTransaction = transactionApi.createTransaction({
+            wallet_id: toId,
+            user_category_id: TRANSFER_CATEGORY.IN.id,
+            amount,
+            transaction_date: date,
+            content: `${contentBase}`,
+            note: baseNote,
+            type: TRANSFER_CATEGORY.IN.type,
+        });
+
+        await Promise.allSettled([fromTransaction, toTransaction]);
+    };
+
     const handleTransfer = async () => {
         if (!fromWalletId || !toWalletId) {
             Alert.alert('Lỗi', 'Vui lòng chọn ví nguồn và ví đích');
@@ -131,22 +195,37 @@ export default function WalletManagerSheet({ userId, visible, onDismiss, onWalle
             Alert.alert('Lỗi', 'Số tiền phải lớn hơn 0');
             return;
         }
+        if (fromWalletId === toWalletId) {
+            Alert.alert('Lỗi', 'Vui lòng chọn hai ví khác nhau');
+            return;
+        }
+
         try {
             setLoading(true);
-            const res = await fakeApi.transferBetweenWallets(
-                userId,
-                fromWalletId,
-                toWalletId,
+            await walletApi.transfer({
+                from_wallet_id: fromWalletId,
+                to_wallet_id: toWalletId,
                 amount,
-                transferNote.trim() || undefined
-            );
-            if (!(res as any).success) {
-                Alert.alert('Lỗi', (res as any).message || 'Không thể chuyển tiền');
-                return;
-            }
+                note: transferNote.trim() || undefined,
+            });
+
+            await logTransferTransactions({
+                fromId: fromWalletId,
+                toId: toWalletId,
+                amount,
+                note: transferNote.trim() || undefined,
+            });
+
             await refreshWallets();
             setTransferVisible(false);
-            Alert.alert('Thành công', (res as any).message || 'Đã chuyển tiền thành công');
+            setTransferAmount('');
+            setTransferNote('');
+            setFromWalletId(undefined);
+            setToWalletId(undefined);
+            Alert.alert('Thành công', 'Đã chuyển tiền giữa các ví thành công');
+        } catch (error: any) {
+            console.error('Error transferring:', error);
+            Alert.alert('Lỗi', getErrorMessage(error, 'Không thể chuyển tiền'));
         } finally {
             setLoading(false);
         }
@@ -169,7 +248,7 @@ export default function WalletManagerSheet({ userId, visible, onDismiss, onWalle
                             title={() => (
                                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                                     <Text style={{ fontWeight: '600' }}>{w.name}</Text>
-                                    {w.is_default ? <Chip compact style={{ marginLeft: 8 }} selectedColor="#2563EB">Mặc định</Chip> : null}
+                                    {(w.is_default === 1 || w.is_default === true) ? <Chip compact style={{ marginLeft: 8 }} selectedColor="#2563EB">Mặc định</Chip> : null}
                                 </View>
                             )}
                             description={`${w.amount.toLocaleString('vi-VN')} ${w.currency}`}
@@ -177,22 +256,42 @@ export default function WalletManagerSheet({ userId, visible, onDismiss, onWalle
                                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                                     {currentWalletId === w.id ? <IconButton icon="check" iconColor="#22C55E" onPress={() => { }} /> : null}
                                     <IconButton icon="pencil" iconColor="#3B82F6" onPress={() => openEditWallet(w)} />
-                                    {w.is_default ? (
+                                    {(w.is_default === 1 || w.is_default === true) ? (
                                         <IconButton icon="star" iconColor="#F59E0B" onPress={() => { }} />
                                     ) : (
-                                        <IconButton icon="star-outline" onPress={async () => { const r = await fakeApi.setDefaultWallet(userId, w.id); if ((r as any).success) { await refreshWallets(); } }} />
+                                        <IconButton icon="star-outline" onPress={async () => {
+                                            try {
+                                                await walletApi.setDefaultWallet(w.id);
+                                                await refreshWallets();
+                                            } catch (error: any) {
+                                                console.error('Error setting default wallet:', error);
+                                                Alert.alert('Lỗi', getErrorMessage(error, 'Không thể đặt ví mặc định'));
+                                            }
+                                        }} />
                                     )}
-                                    {!w.is_default ? (
+                                    {!(w.is_default === 1 || w.is_default === true) ? (
                                         <IconButton icon="close-circle" iconColor="#EF4444" onPress={() => {
                                             Alert.alert('Xóa ví', `Xóa ví '${w.name}'? Hành động này không thể hoàn tác`, [
                                                 { text: 'Hủy' },
-                                                { text: 'Xóa', style: 'destructive', onPress: async () => { const res = await fakeApi.deleteWallet(userId, w.id); if (!(res as any).success) { Alert.alert('Lỗi', (res as any).message || 'Không thể xóa'); return; } await refreshWallets(); } },
+                                                { text: 'Xóa', style: 'destructive', onPress: async () => {
+                                                    try {
+                                                        await walletApi.deleteWallet(w.id);
+                                                        await refreshWallets();
+                                                    } catch (error: any) {
+                                                        console.error('Error deleting wallet:', error);
+                                                        Alert.alert('Lỗi', getErrorMessage(error, 'Không thể xóa ví'));
+                                                    }
+                                                } },
                                             ]);
                                         }} />
                                     ) : null}
                                 </View>
                             )}
-                            onPress={async () => { await fakeApi.setCurrentWallet(userId, w.id); setCurrentWalletId(w.id); onWalletChanged?.(w.id); onDismiss(); }}
+                            onPress={async () => {
+                                setCurrentWalletId(w.id);
+                                onWalletChanged?.(w.id);
+                                onDismiss();
+                            }}
                         />
                     ))}
                 </ScrollView>
@@ -235,16 +334,27 @@ export default function WalletManagerSheet({ userId, visible, onDismiss, onWalle
                                         if (!canSubmit()) return;
                                         try {
                                             setLoading(true);
-                                            const res = await fakeApi.createWallet(userId, name.trim(), parseFormattedNumber(amount), currency);
-                                            if (!(res as any).success) { Alert.alert('Lỗi', (res as any).message || 'Không thể tạo ví'); return; }
-                                            await fakeApi.setCurrentWallet(userId, (res as any).wallet.id);
-                                            setCurrentWalletId((res as any).wallet.id);
-                                            onWalletChanged?.((res as any).wallet.id);
+                                            const response = await walletApi.createWallet({
+                                                name: name.trim(),
+                                                amount: parseFormattedNumber(amount),
+                                                currency: currency,
+                                                is_default: wallets.length === 0 ? 1 : 0
+                                            });
+                                            const wallet = response.data?.wallet;
+                                            if (wallet) {
+                                                setCurrentWalletId(wallet.id);
+                                                onWalletChanged?.(wallet.id);
+                                            }
                                             await refreshWallets();
                                             setCreateVisible(false);
                                             setName(''); setAmount('');
-                                            Alert.alert('Đã tạo ví');
-                                        } finally { setLoading(false); }
+                                            Alert.alert('Thành công', 'Đã tạo ví');
+                                        } catch (error: any) {
+                                            console.error('Error creating wallet:', error);
+                                            Alert.alert('Lỗi', getErrorMessage(error, 'Không thể tạo ví'));
+                                        } finally {
+                                            setLoading(false);
+                                        }
                                     }}>Lưu</Button>
                                 </View>
                             </KeyboardAwareScrollView>

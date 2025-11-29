@@ -485,8 +485,6 @@ Quan hệ:
 + daily_reminder_enabled: Int
 + reminder_time: String
 + weekend_mode: Int
-+ freeze_available: Int
-+ freeze_used_this_week: Int
 + best_streak: Int
 + total_active_days: Int
 + created_at: DateTime
@@ -848,8 +846,6 @@ classDiagram
         +daily_reminder_enabled: Int
         +reminder_time: String
         +weekend_mode: Int
-        +freeze_available: Int
-        +freeze_used_this_week: Int
         +best_streak: Int
         +total_active_days: Int
         +created_at: DateTime

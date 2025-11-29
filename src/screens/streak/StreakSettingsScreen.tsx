@@ -6,8 +6,9 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useAppTheme } from '../../theme';
 import AppBar from '../../components/AppBar';
-import { fakeApi } from '../../services/fakeApi';
+import { streakApi } from '../../api/streakApi';
 import { useAuth } from '../../contexts/AuthContext';
+import { getErrorMessage } from '../../utils/errorHandler';
 
 interface StreakSettingsScreenProps {
   navigation: any;
@@ -16,7 +17,7 @@ interface StreakSettingsScreenProps {
 export default function StreakSettingsScreen({ navigation }: StreakSettingsScreenProps) {
   const theme = useAppTheme();
   const { user } = useAuth();
-  const userId = user?.id || 1;
+  const userId = user?.id;
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -30,7 +31,6 @@ export default function StreakSettingsScreen({ navigation }: StreakSettingsScree
   // Stats state
   const [bestStreak, setBestStreak] = useState(0);
   const [totalActiveDays, setTotalActiveDays] = useState(0);
-  const [freezesLeft, setFreezesLeft] = useState(0);
   const [currentStreak, setCurrentStreak] = useState(0);
 
   useEffect(() => {
@@ -40,30 +40,30 @@ export default function StreakSettingsScreen({ navigation }: StreakSettingsScree
   const loadSettings = async () => {
     try {
       setLoading(true);
-      const [settingsResult, statsResult] = await Promise.all([
-        fakeApi.getStreakData(userId),
-        fakeApi.getStreakStats(userId)
+      const [streakResponse, settingsResponse] = await Promise.all([
+        streakApi.getStreak(),
+        streakApi.getSettings()
       ]);
 
-      if (settingsResult.success && settingsResult.data.settings) {
-        const settings = settingsResult.data.settings;
-        setDailyReminderEnabled(settings.daily_reminder_enabled || settings.dailyReminderEnabled || false);
-        setWeekendMode(settings.weekend_mode || settings.weekendMode || false);
+      const streak = streakResponse.data?.data;
+      const settings = settingsResponse.data?.data;
+
+      if (settings) {
+        setDailyReminderEnabled(settings.daily_reminder_enabled === 1);
+        setWeekendMode(settings.weekend_mode === 1);
         
         // Parse reminder time
-        const timeStr = settings.reminder_time || settings.reminderTime || '20:00';
+        const timeStr = settings.reminder_time || '20:00';
         const [hours, minutes] = timeStr.split(':').map(Number);
         const date = new Date();
         date.setHours(hours, minutes, 0, 0);
         setReminderTime(date);
       }
 
-      if (statsResult.success && statsResult.data) {
-        const stats = statsResult.data;
-        setBestStreak(stats.bestStreak || 0);
-        setTotalActiveDays(stats.totalActiveDays || 0);
-        setFreezesLeft(stats.freezesLeft || 0);
-        setCurrentStreak(stats.currentStreak || 0);
+      if (streak && settings) {
+        setBestStreak(settings.best_streak || 0);
+        setTotalActiveDays(settings.total_active_days || 0);
+        setCurrentStreak(streak.streak_days || 0);
       }
     } catch (error) {
       console.error('Error loading settings:', error);
@@ -79,21 +79,17 @@ export default function StreakSettingsScreen({ navigation }: StreakSettingsScree
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       const timeStr = `${String(reminderTime.getHours()).padStart(2, '0')}:${String(reminderTime.getMinutes()).padStart(2, '0')}`;
       
-      const result = await fakeApi.updateStreakSettings(userId, {
-        dailyReminderEnabled,
-        reminderTime: timeStr,
-        weekendMode
+      await streakApi.updateSettings({
+        daily_reminder_enabled: dailyReminderEnabled ? 1 : 0,
+        reminder_time: timeStr,
+        weekend_mode: weekendMode ? 1 : 0,
       });
 
-      if (result.success) {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        Alert.alert('Thành công', 'Đã lưu cài đặt!');
-      } else {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        Alert.alert('Lỗi', 'Không thể lưu cài đặt');
-      }
-    } catch (error) {
-      Alert.alert('Lỗi', 'Có lỗi xảy ra');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert('Thành công', 'Đã lưu cài đặt!');
+    } catch (error: any) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert('Lỗi', getErrorMessage(error, 'Không thể lưu cài đặt'));
       console.error('Error saving settings:', error);
     } finally {
       setSaving(false);
@@ -183,12 +179,6 @@ const formatTime = (date: Date) => {
           />
           <Divider />
           
-          <List.Item
-            title="Freeze"
-            description="Mỗi tuần bạn có 1 lần freeze để giữ streak khi không hoạt động"
-            left={props => <List.Icon {...props} icon="snowflake" />}
-          />
-          <Divider />
         </List.Section>
 
         {/* Save Button */}

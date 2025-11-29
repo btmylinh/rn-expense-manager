@@ -2,12 +2,16 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, KeyboardAvoidingView, Platform, Image } from 'react-native';
 import { Text } from 'react-native-paper';
-import { fakeApi } from '../../services/fakeApi';
+import { isAxiosError } from 'axios';
+import { authApi } from '../../api/authApi';
 import { useAppTheme } from '../../theme';
+import { useAuth } from '../../contexts/AuthContext';
 import VerificationCodeInput from '../../components/VerificationCodeInput';
+import { getErrorMessage } from '../../utils/errorHandler';
 
 export default function ConfirmEmailScreen({ route, navigation }: any) {
 	const theme = useAppTheme();
+	const { verifyRegistrationOtp } = useAuth();
 	const { email, otp: otpFromRoute } = route.params ?? {};
 	const [otp, setOtp] = useState<string>(otpFromRoute ?? '');
 	const [loading, setLoading] = useState(false);
@@ -22,17 +26,17 @@ export default function ConfirmEmailScreen({ route, navigation }: any) {
 		}
 		try {
 			setLoading(true);
-			const result = await fakeApi.confirmEmail(email, otp);
+			const result = await verifyRegistrationOtp(email, otp);
 			
-			if (!result.success) {
-				setError(result.message || 'Xác thực thất bại');
-				return;
-			}
-			
+			if (result.success) {
 			// Navigate to setup after successful confirmation
-			navigation.replace('Setup', { email });
-		} catch (e: any) {
-			setError(e.message ?? 'Đã xảy ra lỗi');
+				// Setup screen will check if user has wallets
+				navigation.replace('Setup');
+			} else {
+				setError(result.message || 'Xác thực thất bại');
+			}
+		} catch (error) {
+			setError(getErrorMessage(error, 'Xác thực thất bại'));
 		} finally {
 			setLoading(false);
 		}
@@ -42,15 +46,10 @@ export default function ConfirmEmailScreen({ route, navigation }: any) {
 		setError(null);
 		try {
 			setResending(true);
-			const result = await fakeApi.resendOTP(email);
-			if (result.success) {
+			await authApi.resendRegistrationOtp({ email });
 				setError(null);
-				// OTP mới sẽ được log trong console (dev mode)
-			} else {
-				setError(result.message || 'Gửi lại mã thất bại');
-			}
-		} catch (e: any) {
-			setError(e.message ?? 'Đã xảy ra lỗi');
+		} catch (error) {
+			setError(getErrorMessage(error, 'Gửi lại mã thất bại'));
 		} finally {
 			setResending(false);
 		}

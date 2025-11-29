@@ -10,9 +10,10 @@ interface StreakCardProps {
   onPress?: () => void;
   onActionPress?: () => void;
   loading?: boolean;
+  recentHistory?: Array<{ date: string; has_activity: number }>;
 }
 
-export default function StreakCard({ streakStatus, onPress, onActionPress, loading }: StreakCardProps) {
+export default function StreakCard({ streakStatus, onPress, onActionPress, loading, recentHistory }: StreakCardProps) {
   const theme = useAppTheme();
 
   // Loading state
@@ -33,7 +34,7 @@ export default function StreakCard({ streakStatus, onPress, onActionPress, loadi
 
   const getCardStyle = () => {
     const baseStyle = [styles.card, { backgroundColor: theme.colors.surface }];
-    
+
     switch (streakStatus.state) {
       case StreakState.WARNING:
         return [...baseStyle, styles.warningCard];
@@ -50,9 +51,9 @@ export default function StreakCard({ streakStatus, onPress, onActionPress, loadi
     if (streakStatus.state === StreakState.NEW_START) {
       return (
         <View style={styles.progressContainer}>
-          <ProgressBar 
-            progress={0.14} 
-            color={theme.colors.primary} 
+          <ProgressBar
+            progress={0.14}
+            color={theme.colors.primary}
             style={styles.progressBar}
           />
           <Text style={[styles.progressText, { color: theme.colors.onSurfaceVariant }]}>
@@ -65,9 +66,12 @@ export default function StreakCard({ streakStatus, onPress, onActionPress, loadi
   };
 
   const renderActionButton = () => {
-    if (streakStatus.state === StreakState.WARNING || streakStatus.state === StreakState.LOST) {
+    if (
+      streakStatus.state === StreakState.WARNING ||
+      streakStatus.state === StreakState.LOST
+    ) {
       return (
-        <TouchableOpacity 
+        <TouchableOpacity
           style={[styles.actionButton, { backgroundColor: message.color + '20' }]}
           onPress={onActionPress}
         >
@@ -102,31 +106,22 @@ export default function StreakCard({ streakStatus, onPress, onActionPress, loadi
           <View style={styles.header}>
             <View style={styles.leftSection}>
               <View style={[styles.iconContainer, { backgroundColor: message.color + '15' }]}>
-              <MaterialCommunityIcons 
-                name={message.icon as any} 
-                  size={28} 
-                color={message.color} 
-              />
-            </View>
-            <View style={styles.textContainer}>
-              <Text style={[styles.title, { color: theme.colors.onSurface }]}>
-                {message.title}
-              </Text>
-              <Text style={[styles.subtitle, { color: theme.colors.onSurfaceVariant }]}>
-                {message.subtitle}
-              </Text>
-            </View>
-          </View>
-
-            {/* Streak counter badge */}
-            {streakStatus.streakDays > 0 && (
-              <View style={[styles.streakBadge, { backgroundColor: message.color + '15' }]}>
-                <MaterialCommunityIcons name="fire" size={20} color={message.color} />
-                <Text style={[styles.streakCount, { color: message.color }]}>
-                  {streakStatus.streakDays}
+                <MaterialCommunityIcons
+                  name={message.icon as any}
+                  size={28}
+                  color={message.color}
+                />
+              </View>
+              <View style={styles.textContainer}>
+                <Text style={[styles.title, { color: theme.colors.onSurface }]}>
+                  {message.title}
+                </Text>
+                <Text style={[styles.subtitle, { color: theme.colors.onSurfaceVariant }]}>
+                  {message.subtitle}
                 </Text>
               </View>
-            )}
+            </View>
+           
           </View>
 
           {/* Progress bar for new start */}
@@ -139,37 +134,44 @@ export default function StreakCard({ streakStatus, onPress, onActionPress, loadi
           {streakStatus.state === StreakState.MAINTAINING && (
             <View style={styles.miniCalendar}>
               <View style={styles.calendarHeader}>
-                <MaterialCommunityIcons 
-                  name="calendar-check" 
-                  size={16} 
-                  color={theme.colors.onSurfaceVariant} 
+                <MaterialCommunityIcons
+                  name="calendar-check"
+                  size={16}
+                  color={theme.colors.onSurfaceVariant}
                 />
-              <Text style={[styles.calendarTitle, { color: theme.colors.onSurfaceVariant }]}>
+                <Text style={[styles.calendarTitle, { color: theme.colors.onSurfaceVariant }]}>
                   Hoạt động 7 ngày gần đây
-              </Text>
+                </Text>
               </View>
               <View style={styles.calendarDots}>
                 {Array.from({ length: 7 }, (_, index) => {
                   const date = new Date();
                   date.setDate(date.getDate() - (6 - index));
                   const dayNumber = date.getDate();
-                  const isActive = index < 5; // Mock: 5/7 active
-                  const isToday = index === 6;
+                  const dateStr = date.toISOString().split('T')[0];
                   
+                  // Check if this date has activity from API
+                  const historyEntry = recentHistory?.find(h => {
+                    const historyDate = new Date(h.date).toISOString().split('T')[0];
+                    return historyDate === dateStr;
+                  });
+                  const isActive = historyEntry?.has_activity === 1;
+                  const isToday = index === 6;
+
                   return (
                     <View key={index} style={styles.calendarDotWrapper}>
-                    <View 
-                      style={[
-                        styles.calendarDot,
+                      <View
+                        style={[
+                          styles.calendarDot,
                           isActive && !isToday && styles.calendarDotActive,
                           isToday && styles.calendarDotToday,
-                      ]}
-                    >
+                        ]}
+                      >
                         {isActive && (
-                          <MaterialCommunityIcons 
-                            name="check" 
-                            size={14} 
-                            color={isToday ? '#EF4444' : '#10B981'} 
+                          <MaterialCommunityIcons
+                            name="check"
+                            size={14}
+                            color={isToday ? '#EF4444' : '#10B981'}
                           />
                         )}
                       </View>
@@ -232,9 +234,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   iconContainer: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 14,

@@ -8,8 +8,14 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigators/RootNavigator';
 import { useAppTheme } from '../../theme';
 import { useAuth } from '../../contexts/AuthContext';
-import { fakeApi } from '../../services/fakeApi';
+import { savingsGoalApi } from '../../api/savingsGoalApi';
+import { walletApi } from '../../api/walletApi';
+import { transactionApi } from '../../api/transactionApi';
 import AppBar from '../../components/AppBar';
+import WalletSelectModal from '../../components/WalletSelectModal';
+import { getErrorMessage } from '../../utils/errorHandler';
+import { triggerStreakActivity } from '../../utils/streakHelpers';
+import { TRANSFER_CATEGORY, getTodayDate } from '../../common/transactionCategories';
 
 type SavingsGoalDetailRouteProp = RouteProp<RootStackParamList, 'SavingsGoalDetail'>;
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -19,7 +25,7 @@ export default function SavingsGoalDetailScreen() {
 	const route = useRoute<SavingsGoalDetailRouteProp>();
 	const navigation = useNavigation<NavigationProp>();
 	const { user } = useAuth();
-	const userId = user?.id || 1;
+	const userId = user?.id;
 	const { goalId } = route.params;
 
 	// State
@@ -40,16 +46,27 @@ export default function SavingsGoalDetailScreen() {
 	const loadGoalDetail = async () => {
 		try {
 			setLoading(true);
-			const response = await fakeApi.getSavingsGoalDetail(userId, goalId);
-			if (response.success && response.data) {
-				setGoal(response.data);
-				setContributions(response.data.contributions || []);
+			const response = await savingsGoalApi.getSavingsGoalById(goalId);
+			const goalData = response.data?.data;
+			if (goalData) {
+				// Map backend fields to frontend format
+				const mappedGoal = {
+					...goalData,
+					targetAmount: Number(goalData.target_amount),
+					currentAmount: Number(goalData.current_amount),
+					createdAt: goalData.created_at,
+				};
+				setGoal(mappedGoal);
+				setContributions((goalData.savings_goal_contributions || []).map((c: any) => ({
+					...c,
+					createdAt: c.created_at,
+				})));
 			} else {
 				setSnackMessage('Không thể tải thông tin mục tiêu');
 			}
-		} catch (error) {
+		} catch (error: any) {
 			console.error('Error loading goal detail:', error);
-			setSnackMessage('Có lỗi xảy ra khi tải dữ liệu');
+			setSnackMessage(getErrorMessage(error, 'Có lỗi xảy ra khi tải dữ liệu'));
 		} finally {
 			setLoading(false);
 		}
@@ -58,11 +75,17 @@ export default function SavingsGoalDetailScreen() {
 	// Load wallets
 	const loadWallets = async () => {
 		try {
-			const walletList = await fakeApi.getWallets(userId);
-			if (walletList && walletList.length > 0) {
-				setWallets(walletList);
+			const response = await walletApi.getWallets();
+			const walletList = response.data?.wallets || [];
+			if (walletList.length > 0) {
+				// Map backend fields to frontend format
+				const mappedWallets = walletList.map((w: any) => ({
+					...w,
+					is_default: w.is_default === 1,
+				}));
+				setWallets(mappedWallets);
 				// Set default wallet as selected
-				const defaultWallet = walletList.find(w => w.is_default);
+				const defaultWallet = mappedWallets.find((w: any) => w.is_default);
 				if (defaultWallet) {
 					setSelectedWalletId(defaultWallet.id);
 				}
@@ -168,19 +191,24 @@ export default function SavingsGoalDetailScreen() {
 					: `Từ ${selectedWallet.name}`;
 			}
 			
-			const response = await fakeApi.addContribution(userId, goalId, amount, finalNote || undefined);
+			// Create contribution
+			await savingsGoalApi.createContribution(goalId, {
+				amount,
+				note: finalNote || undefined
+			});
+			await triggerStreakActivity('savings_contribution');
 			
 			// If wallet is selected, create a savings transaction
-			if (selectedWalletId && response.success) {
+			if (selectedWalletId) {
 				try {
-					// Create savings transaction (category id = 1 for savings)
-					await fakeApi.createTransaction(userId, {
-						walletId: selectedWalletId,
-						userCategoryId: 1, // Savings category
+					// Create savings transaction (category id = 1 for savings - TODO: Get actual category ID)
+					await transactionApi.createTransaction({
+						wallet_id: selectedWalletId,
+						user_category_id: TRANSFER_CATEGORY.SAVINGS.id,
 						amount: amount,
-						transactionDate: new Date().toISOString().split('T')[0],
+						transaction_date: getTodayDate(),
 						content: `Tiết kiệm cho mục tiêu: ${goal.name}`,
-						type: 0, // Expense type
+						type: TRANSFER_CATEGORY.SAVINGS.type,
 					});
 				} catch (transactionError) {
 					console.error('Error creating transaction:', transactionError);
@@ -188,7 +216,6 @@ export default function SavingsGoalDetailScreen() {
 				}
 			}
 			
-		if (response.success && response.data) {
 			setAddAmount('');
 			setAddNote('');
 			// Keep selected wallet for next time
@@ -203,21 +230,37 @@ export default function SavingsGoalDetailScreen() {
 				successMessage = `Đã thêm tiền và trừ từ ${walletName} thành công!`;
 			}
 			
+			// Reload data to check if goal is completed
+			const reloadResponse = await savingsGoalApi.getSavingsGoalById(goalId);
+			const reloadedGoalData = reloadResponse.data?.data;
+			
+			if (reloadedGoalData) {
+				// Map and update state
+				const mappedGoal = {
+					...reloadedGoalData,
+					targetAmount: Number(reloadedGoalData.target_amount),
+					currentAmount: Number(reloadedGoalData.current_amount),
+					createdAt: reloadedGoalData.created_at,
+				};
+				setGoal(mappedGoal);
+				setContributions((reloadedGoalData.savings_goal_contributions || []).map((c: any) => ({
+					...c,
+					createdAt: c.created_at,
+				})));
+			
 			// Check if goal is completed
-			if (response.data.goal.progress >= 100) {
+				const progress = (mappedGoal.currentAmount / mappedGoal.targetAmount) * 100;
+				if (progress >= 100) {
 				setCelebrationModalVisible(true);
 			} else {
 				setSnackMessage(successMessage);
 			}
-			
-			// Reload data
-			await loadGoalDetail();
 		} else {
-			setSnackMessage('Có lỗi xảy ra');
+				setSnackMessage(successMessage);
 		}
-		} catch (error) {
+		} catch (error: any) {
 			console.error('Error adding contribution:', error);
-			setSnackMessage('Có lỗi xảy ra khi thêm tiền');
+			setSnackMessage(getErrorMessage(error, 'Có lỗi xảy ra khi thêm tiền'));
 		} finally {
 			setAddingMoney(false);
 		}
@@ -235,15 +278,11 @@ export default function SavingsGoalDetailScreen() {
 					style: 'destructive',
 					onPress: async () => {
 						try {
-							const response = await fakeApi.deleteSavingsGoal(userId, goalId);
-							if (response.success) {
+							await savingsGoalApi.deleteSavingsGoal(goalId);
 								setSnackMessage('Đã xóa mục tiêu');
 								navigation.goBack();
-							} else {
-								setSnackMessage(response.message || 'Có lỗi xảy ra');
-							}
-						} catch (error) {
-							setSnackMessage('Có lỗi xảy ra khi xóa mục tiêu');
+						} catch (error: any) {
+							setSnackMessage(getErrorMessage(error, 'Có lỗi xảy ra khi xóa mục tiêu'));
 						}
 					}
 				}
@@ -617,95 +656,20 @@ export default function SavingsGoalDetailScreen() {
 				</Modal>
 			</Portal>
 
-		{/* Wallet Dropdown Modal */}
-		<Portal>
-			<Modal
+		<WalletSelectModal
 				visible={showWalletDropdown}
+			wallets={wallets}
+			selectedWalletId={selectedWalletId}
 				onDismiss={() => setShowWalletDropdown(false)}
-				contentContainerStyle={[styles.dropdownModal, { backgroundColor: theme.colors.surface }]}
-			>
-				<Text style={[styles.dropdownTitle, { color: theme.colors.onSurface }]}>
-					Chọn ví để trừ tiền
-				</Text>
-				
-				<ScrollView style={styles.dropdownList}>
-					{/* No wallet option */}
-					<TouchableOpacity
-						style={[styles.dropdownItem, { 
-							backgroundColor: selectedWalletId === null ? theme.colors.primaryContainer : 'transparent' 
-						}]}
-						onPress={() => {
-							setSelectedWalletId(null);
+			onSelect={(walletId) => {
+				setSelectedWalletId(walletId);
 							setShowWalletDropdown(false);
 						}}
-					>
-						<MaterialCommunityIcons 
-							name="wallet-outline" 
-							size={24} 
-							color={selectedWalletId === null ? theme.colors.primary : theme.colors.onSurfaceVariant} 
-						/>
-						<View style={styles.dropdownItemText}>
-							<Text style={[styles.dropdownItemTitle, { 
-								color: selectedWalletId === null ? theme.colors.primary : theme.colors.onSurface 
-							}]}>
-								Không trừ ví
-							</Text>
-							<Text style={[styles.dropdownItemSubtitle, { 
-								color: selectedWalletId === null ? theme.colors.primary : theme.colors.onSurfaceVariant 
-							}]}>
-								Chỉ ghi nhận vào mục tiêu
-							</Text>
-						</View>
-						{selectedWalletId === null && (
-							<MaterialCommunityIcons 
-								name="check" 
-								size={20} 
-								color={theme.colors.primary} 
-							/>
-						)}
-					</TouchableOpacity>
-
-					{/* Wallet options */}
-					{wallets.map((wallet) => (
-						<TouchableOpacity
-							key={wallet.id}
-							style={[styles.dropdownItem, { 
-								backgroundColor: selectedWalletId === wallet.id ? theme.colors.primaryContainer : 'transparent' 
-							}]}
-							onPress={() => {
-								setSelectedWalletId(wallet.id);
-								setShowWalletDropdown(false);
-							}}
-						>
-							<MaterialCommunityIcons 
-								name="wallet" 
-								size={24} 
-								color={selectedWalletId === wallet.id ? theme.colors.primary : theme.colors.onSurfaceVariant} 
-							/>
-							<View style={styles.dropdownItemText}>
-								<Text style={[styles.dropdownItemTitle, { 
-									color: selectedWalletId === wallet.id ? theme.colors.primary : theme.colors.onSurface 
-								}]}>
-									{wallet.name}
-								</Text>
-								<Text style={[styles.dropdownItemSubtitle, { 
-									color: selectedWalletId === wallet.id ? theme.colors.primary : theme.colors.onSurfaceVariant 
-								}]}>
-									{wallet.amount.toLocaleString()} {wallet.currency}
-								</Text>
-							</View>
-							{selectedWalletId === wallet.id && (
-								<MaterialCommunityIcons 
-									name="check" 
-									size={20} 
-									color={theme.colors.primary} 
-								/>
-							)}
-						</TouchableOpacity>
-					))}
-				</ScrollView>
-			</Modal>
-		</Portal>
+			title="Chọn ví để trừ tiền"
+			allowNone
+			noneLabel="Không trừ ví"
+			noneDescription="Chỉ ghi nhận vào mục tiêu"
+		/>
 
 		<Snackbar
 			visible={!!snackMessage}
@@ -943,42 +907,6 @@ const styles = StyleSheet.create({
 		fontWeight: '500',
 		marginHorizontal: 8,
 		flex: 1,
-	},
-	dropdownModal: {
-		margin: 20,
-		borderRadius: 12,
-		padding: 20,
-		maxHeight: '70%',
-	},
-	dropdownTitle: {
-		fontSize: 18,
-		fontWeight: '600',
-		marginBottom: 16,
-		textAlign: 'center',
-	},
-	dropdownList: {
-		maxHeight: 300,
-	},
-	dropdownItem: {
-		flexDirection: 'row',
-		alignItems: 'center',
-		paddingVertical: 12,
-		paddingHorizontal: 16,
-		borderRadius: 8,
-		marginBottom: 4,
-	},
-	dropdownItemText: {
-		flex: 1,
-		marginLeft: 12,
-	},
-	dropdownItemTitle: {
-		fontSize: 16,
-		fontWeight: '500',
-		marginBottom: 2,
-	},
-	dropdownItemSubtitle: {
-		fontSize: 12,
-		opacity: 0.7,
 	},
 	modalActions: {
 		flexDirection: 'row',

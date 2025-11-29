@@ -15,7 +15,7 @@ let notifications: Array<{id: number, userId: number, type: string, title: strin
 let notificationSettings: Array<{userId: number, budgetAlerts: boolean, transactionReminders: boolean, weeklyReports: boolean, securityAlerts: boolean, pushEnabled: boolean, quietHoursEnabled: boolean, quietHoursStart: string, quietHoursEnd: string, updatedAt: string}> = [];
 let streaks: Array<{id: number, userId: number, streakDays?: number, streak_days?: number, lastTransactionDate?: string, last_transaction_date?: string, createdAt?: string, created_at?: string, updatedAt?: string, updated_at?: string}> = [];
 let streakHistory: Array<{id: number, userId: number, date: string, hasActivity: boolean, activityType: string, createdAt: string}> = [];
-let streakSettings: Array<{id: number, userId: number, dailyReminderEnabled?: boolean, daily_reminder_enabled?: boolean, reminderTime?: string, reminder_time?: string, weekendMode?: boolean, weekend_mode?: boolean, freezeAvailable?: number, freeze_available?: number, freezeUsedThisWeek?: number, freeze_used_this_week?: number, bestStreak?: number, best_streak?: number, totalActiveDays?: number, total_active_days?: number, createdAt?: string, created_at?: string, updatedAt?: string, updated_at?: string}> = [];
+let streakSettings: Array<{id: number, userId: number, dailyReminderEnabled?: boolean, daily_reminder_enabled?: boolean, reminderTime?: string, reminder_time?: string, weekendMode?: boolean, weekend_mode?: boolean, bestStreak?: number, best_streak?: number, totalActiveDays?: number, total_active_days?: number, createdAt?: string, created_at?: string, updatedAt?: string, updated_at?: string}> = [];
 let savingsGoals: Array<{id: number, userId: number, name: string, targetAmount: number, currentAmount: number, deadline: string, icon: string, color: string, currency: string, status: string, createdAt: string, updatedAt: string}> = [];
 let savingsGoalContributions: Array<{id: number, goalId: number, amount: number, note: string, createdAt: string}> = [];
 
@@ -194,8 +194,6 @@ const mockUserId = 1;
 			dailyReminderEnabled: s.daily_reminder_enabled,
 			reminderTime: s.reminder_time,
 			weekendMode: s.weekend_mode,
-			freezeAvailable: s.freeze_available,
-			freezeUsedThisWeek: s.freeze_used_this_week,
 			bestStreak: s.best_streak,
 			totalActiveDays: s.total_active_days,
 			createdAt: s.created_at,
@@ -394,7 +392,7 @@ export const fakeApi = {
 		
 		if (user) {
 			// Kiểm tra nếu tài khoản có bật 2FA (kiểm tra cả 1 và true)
-			const has2FA = user.is_2fa === 1 || user.is_2fa === true || (typeof user.is_2fa === 'number' && user.is_2fa > 0);
+			const has2FA = user.is_2fa === 1 || (typeof user.is_2fa === 'number' && user.is_2fa > 0) || user.is_2fa === true;
 			
 			if (has2FA) {
 				// Gửi mã xác thực qua email
@@ -1143,7 +1141,7 @@ export const fakeApi = {
 		if (historyIndex >= 0) {
 			const activityType = streakHistory[historyIndex].activityType;
 			
-			// Only mark as inactive if it was a transaction (not freeze)
+			// Only mark as inactive if it was a transaction entry
 			if (activityType === 'transaction') {
 				streakHistory[historyIndex].hasActivity = false;
 			}
@@ -1208,7 +1206,7 @@ async bulkDeleteTransactions(userId: number, transactionIds: number[]) {
 			if (historyIndex >= 0) {
 				const activityType = streakHistory[historyIndex].activityType;
 				
-				// Only mark as inactive if it was a transaction (not freeze)
+				// Only mark as inactive if it was a transaction entry
 				if (activityType === 'transaction') {
 					streakHistory[historyIndex].hasActivity = false;
 				}
@@ -2800,8 +2798,6 @@ async bulkDeleteTransactions(userId: number, transactionIds: number[]) {
 				dailyReminderEnabled: true,
 				reminderTime: '20:00',
 				weekendMode: false,
-				freezeAvailable: 1,
-				freezeUsedThisWeek: 0,
 				bestStreak: 0,
 				totalActiveDays: 0,
 				createdAt: new Date().toISOString(),
@@ -2881,7 +2877,7 @@ async bulkDeleteTransactions(userId: number, transactionIds: number[]) {
 				userStreak.streak_days = currentStreak + 1;
 				streakIncreased = true;
 			} else if (daysDiff === 2) {
-				// 1 day gap - check if freeze or grace period
+				// 1 day gap - allow grace period depending on weekend mode
 				const yesterday = new Date(today);
 				yesterday.setDate(yesterday.getDate() - 1);
 				const yesterdayStr = yesterday.toISOString().split('T')[0];
@@ -2890,11 +2886,10 @@ async bulkDeleteTransactions(userId: number, transactionIds: number[]) {
 					h => h.userId === userId && h.date === yesterdayStr
 				);
 				
-			const wasFreeze = yesterdayHistory?.activityType === 'freeze';
 			const hadActivity = yesterdayHistory?.hasActivity;
 				
-				if (wasFreeze || hadActivity) {
-					// Freeze or activity yesterday - continue streak
+				if (hadActivity) {
+					// Có hoạt động hôm qua - tiếp tục streak
 					userStreak.streak_days = currentStreak + 1;
 					streakIncreased = true;
 				} else if (!weekendMode) {
@@ -2902,7 +2897,7 @@ async bulkDeleteTransactions(userId: number, transactionIds: number[]) {
 					userStreak.streak_days = currentStreak + 1;
 					streakIncreased = true;
 				} else {
-					// Weekend mode + no activity/freeze - reset
+					// Weekend mode + no activity - reset
 					if (currentStreak > currentBest) {
 						userSettings.best_streak = currentStreak;
 					}
@@ -2910,29 +2905,12 @@ async bulkDeleteTransactions(userId: number, transactionIds: number[]) {
 					userStreak.streak_days = 1;
 				}
 			} else if (daysDiff === 3) {
-				// 2 day gap - check if freeze protected previous day
-				const twoDaysAgo = new Date(today);
-				twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
-				const twoDaysAgoStr = twoDaysAgo.toISOString().split('T')[0];
-				
-			const twoDaysAgoHistory = streakHistory.find(
-				h => h.userId === userId && h.date === twoDaysAgoStr
-			);
-			
-			const wasFreeze = twoDaysAgoHistory?.activityType === 'freeze';
-				
-				if (wasFreeze) {
-					// Freeze 2 days ago + 1 day grace = OK, continue streak
-					userStreak.streak_days = currentStreak + 1;
-					streakIncreased = true;
-				} else {
-					// Streak broken - too many days without activity
+				// 2 day gap - streak broken
 					if (currentStreak > currentBest) {
 						userSettings.best_streak = currentStreak;
 					}
 					this.createStreakNotification(userId, 'streak_lost', currentStreak);
 					userStreak.streak_days = 1;
-				}
 			} else if (daysDiff > 3) {
 				// Streak broken - save best streak and restart
 				if (currentStreak > currentBest) {
@@ -2962,87 +2940,10 @@ async bulkDeleteTransactions(userId: number, transactionIds: number[]) {
 				userSettings.total_active_days = totalActive + 1;
 				userSettings.updated_at = now;
 				
-				// Reset weekly freeze counter on Monday
-				const dayOfWeek = new Date().getDay();
-				if (dayOfWeek === 1) {
-					const freezeUsed = userSettings.freeze_used_this_week || userSettings.freezeUsedThisWeek || 0;
-					if (freezeUsed > 0) {
-						// Generate freeze reset notification
-						this.createStreakNotification(userId, 'streak_freeze_reset', 0);
-					}
-					userSettings.freeze_used_this_week = 0;
-				}
 			}
 		}
 		
 		return { success: true, data: { activityRecorded: true, todayHistory } };
-	},
-
-	// Use streak freeze
-async useStreakFreeze(userId: number) {
-	await delay(200);
-	
-	let userSettings = streakSettings.find(s => s.userId === userId);
-	
-	
-	if (!userSettings) {
-		return { success: false, error: 'User settings not found' };
-	}
-		
-		const freezeUsed = userSettings.freeze_used_this_week || userSettings.freezeUsedThisWeek || 0;
-		const freezeAvailable = userSettings.freeze_available || userSettings.freezeAvailable || 0;
-		
-		if (freezeUsed >= freezeAvailable) {
-			return { success: false, error: 'No freezes available this week' };
-		}
-		
-		const today = new Date().toISOString().split('T')[0];
-		const todayHistory = streakHistory.find(h => h.userId === userId && h.date === today);
-		
-		if (todayHistory && todayHistory.hasActivity) {
-			return { success: false, error: 'Already completed today' };
-		}
-		
-		// Apply freeze
-		const freezeHistory = {
-			id: Math.max(...streakHistory.map(h => h.id), 0) + 1,
-			userId,
-			date: today,
-			hasActivity: true,
-			activityType: 'freeze',
-			createdAt: new Date().toISOString()
-		};
-		
-	if (todayHistory) {
-		Object.assign(todayHistory, freezeHistory);
-	} else {
-		streakHistory.push(freezeHistory);
-	}
-	
-	// Update settings to persist changes
-	let realSettings = streakSettings.find(s => s.userId === userId);
-	if (!realSettings) {
-		// Create new settings if not exists
-		realSettings = {
-			id: Math.max(...streakSettings.map(s => s.id || 0), 0) + 1,
-			userId,
-			dailyReminderEnabled: userSettings.daily_reminder_enabled || userSettings.dailyReminderEnabled || false,
-			reminderTime: userSettings.reminder_time || userSettings.reminderTime || '20:00',
-			weekendMode: userSettings.weekend_mode || userSettings.weekendMode || false,
-			freezeAvailable: userSettings.freeze_available || userSettings.freezeAvailable || 1,
-			freezeUsedThisWeek: 0,
-			bestStreak: userSettings.best_streak || userSettings.bestStreak || 0,
-			totalActiveDays: userSettings.total_active_days || userSettings.totalActiveDays || 0,
-			createdAt: new Date().toISOString(),
-			updatedAt: new Date().toISOString()
-		};
-		streakSettings.push(realSettings);
-	}
-	
-	realSettings.freezeUsedThisWeek = (realSettings.freezeUsedThisWeek || 0) + 1;
-	realSettings.updatedAt = new Date().toISOString();
-
-return { success: true, data: { freezeUsed: true } };
 },
 
 // Recalculate streak from scratch based on history
@@ -3075,38 +2976,12 @@ async recalculateStreak(userId: number) {
 					// Consecutive day
 					currentStreak++;
 				} else if (daysDiff === 2) {
-					// 1 day gap - check if freeze or grace period
-					const previousDay = new Date(h.date);
-					previousDay.setDate(previousDay.getDate() - 1);
-					const previousDayStr = previousDay.toISOString().split('T')[0];
-					
-				const previousHistory = userHistory.find(prev => prev.date === previousDayStr);
-				const wasFreeze = previousHistory?.activityType === 'freeze';
-					
-					if (wasFreeze) {
-						// Freeze protects - continue streak
+					// 1 day gap - allow single-day grace
 						currentStreak++;
-					} else {
-						// Grace period (1 day gap allowed)
-						currentStreak++;
-					}
 				} else if (daysDiff === 3) {
-					// 2 day gap - check if freeze on day before
-					const twoDaysAgo = new Date(h.date);
-					twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
-					const twoDaysAgoStr = twoDaysAgo.toISOString().split('T')[0];
-					
-				const twoDaysAgoHistory = userHistory.find(prev => prev.date === twoDaysAgoStr);
-				const wasFreeze = twoDaysAgoHistory?.activityType === 'freeze';
-					
-					if (wasFreeze) {
-						// Freeze + grace period = continue
-						currentStreak++;
-					} else {
 						// Gap too large - reset
 						bestStreak = Math.max(bestStreak, currentStreak);
 						currentStreak = 1;
-					}
 				} else {
 					// More than 2 day gap - reset
 					bestStreak = Math.max(bestStreak, currentStreak);
@@ -3184,7 +3059,6 @@ async recalculateStreak(userId: number) {
 			bestStreak: userSettings.best_streak || userSettings.bestStreak || 0,
 			totalActiveDays: userSettings.total_active_days || userSettings.totalActiveDays || 0,
 			completionRate,
-			freezesLeft: (userSettings.freeze_available || userSettings.freezeAvailable || 0) - (userSettings.freeze_used_this_week || userSettings.freezeUsedThisWeek || 0),
 			activityBreakdown,
 			streakStartDate: userStreak.created_at || userStreak.createdAt
 		}
@@ -3287,7 +3161,7 @@ async resetStreak(userId: number) {
 	// Create streak notification helper
 	createStreakNotification(
 		userId: number, 
-		type: 'streak_warning' | 'streak_lost' | 'streak_milestone' | 'streak_reminder' | 'streak_freeze_reset',
+		type: 'streak_warning' | 'streak_lost' | 'streak_milestone' | 'streak_reminder',
 		streakValue: number
 	) {
 		try {
@@ -3307,10 +3181,6 @@ async resetStreak(userId: number) {
 				streak_reminder: {
 					title: 'Nhắc nhở Streak',
 					message: `Đã ghi lại chi tiêu hôm nay chưa? Streak hiện tại: ${streakValue} ngày`,
-				},
-				streak_freeze_reset: {
-					title: 'Freeze đã được reset!',
-					message: 'Tuần mới bắt đầu! Bạn có thêm 1 freeze để sử dụng trong tuần này.',
 				}
 			};
 

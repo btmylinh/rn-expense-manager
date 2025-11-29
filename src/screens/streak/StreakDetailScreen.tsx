@@ -6,9 +6,10 @@ import { Calendar } from 'react-native-calendars';
 import * as Haptics from 'expo-haptics';
 import { useAppTheme } from '../../theme';
 import AppBar from '../../components/AppBar';
-import { fakeApi } from '../../services/fakeApi';
-import { getStreakState, StreakState } from '../../utils/streakHelpers';
+import { streakApi } from '../../api/streakApi';
+import { getStreakState, StreakState, triggerStreakActivity } from '../../utils/streakHelpers';
 import { useAuth } from '../../contexts/AuthContext';
+import { getErrorMessage } from '../../utils/errorHandler';
 
 interface StreakDetailScreenProps {
   navigation: any;
@@ -40,7 +41,7 @@ const StatItem: React.FC<StatItemProps> = ({ icon, label, value, color = '#6B728
 export default function StreakDetailScreen({ navigation }: StreakDetailScreenProps) {
   const theme = useAppTheme();
   const { user } = useAuth();
-  const userId = user?.id || 1;
+  const userId = user?.id;
   
   const [streakData, setStreakData] = useState<any>(null);
   const [streakStats, setStreakStats] = useState<any>(null);
@@ -54,28 +55,67 @@ export default function StreakDetailScreen({ navigation }: StreakDetailScreenPro
   const loadStreakData = async () => {
     try {
       setLoading(true);
-      const [streakResult, statsResult] = await Promise.all([
-        fakeApi.getStreakData(userId),
-        fakeApi.getStreakStats(userId)
+      const [streakResponse, settingsResponse, historyResponse] = await Promise.all([
+        streakApi.getStreak(),
+        streakApi.getSettings(),
+        streakApi.getHistory({ limit: 1000 })
       ]);
 
-      if (streakResult.success) {
-        setStreakData(streakResult.data);
-        // Format data for calendar
-        formatCalendarData(streakResult.data);
-      }
+      const streak = streakResponse.data?.data;
+      const settings = settingsResponse.data?.data;
+      const history = historyResponse.data?.data?.history || [];
 
-      if (statsResult.success) {
-        setStreakStats(statsResult.data);
+      if (streak && settings) {
+        // Map backend data to frontend format
+        const mappedData = {
+          streak: {
+            id: streak.id,
+            userId: streak.user_id,
+            streakDays: streak.streak_days,
+            lastTransactionDate: streak.last_transaction_date,
+            createdAt: streak.created_at,
+            updatedAt: streak.updated_at,
+          },
+          settings: {
+            id: settings.id,
+            userId: settings.user_id,
+            dailyReminderEnabled: settings.daily_reminder_enabled === 1,
+            reminderTime: settings.reminder_time,
+            weekendMode: settings.weekend_mode === 1,
+            bestStreak: settings.best_streak,
+            totalActiveDays: settings.total_active_days,
+          },
+        };
+
+        setStreakData(mappedData);
+        formatCalendarData(mappedData, history);
+
+        // Calculate stats
+        // Calculate days since registration for completion rate
+        const registrationDate = history.length > 0 
+          ? new Date(Math.min(...history.map((d: any) => new Date(d.date).getTime())))
+          : new Date();
+        const daysSinceRegistration = Math.max(1, Math.ceil((new Date().getTime() - registrationDate.getTime()) / (1000 * 60 * 60 * 24)));
+        const completionRate = daysSinceRegistration > 0 
+          ? Math.round((settings.total_active_days / daysSinceRegistration) * 100) 
+          : 0;
+
+        const stats = {
+          currentStreak: streak.streak_days,
+          bestStreak: settings.best_streak,
+          totalActiveDays: settings.total_active_days,
+          completionRate: completionRate,
+        };
+        setStreakStats(stats);
       }
     } catch (error) {
-      // Handle error silently
+      console.error('Error loading streak data:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const formatCalendarData = async (data: any) => {
+  const formatCalendarData = (data: any, history: any[]) => {
     const marked: any = {};
     
     // Get today's date in local timezone to avoid timezone issues
@@ -86,114 +126,40 @@ export default function StreakDetailScreen({ navigation }: StreakDetailScreenPro
     yesterdayDate.setDate(yesterdayDate.getDate() - 1);
     const yesterday = `${yesterdayDate.getFullYear()}-${String(yesterdayDate.getMonth() + 1).padStart(2, '0')}-${String(yesterdayDate.getDate()).padStart(2, '0')}`;
 
-    // Get full history from API
-    try {
-      const historyResult = await fakeApi.getFullStreakHistory(userId);
-      if (historyResult.success && historyResult.data) {
-        const history = historyResult.data;
-        
-        // Create a map for quick lookup
-        const historyMap: any = {};
-        history.forEach((day: any) => {
-          historyMap[day.date] = {
-            hasActivity: day.hasActivity,
-            activityType: day.activityType
-          };
-        });
-        
-        // Get the registration date (earliest date in history)
-        const registrationDate = history.length > 0 
-          ? new Date(Math.min(...history.map((d: any) => new Date(d.date + 'T00:00:00').getTime())))
-          : new Date();
-        
-        // Generate all dates from registration to today
-        const todayDate = new Date(today + 'T00:00:00');
-        const currentDate = new Date(registrationDate);
-        currentDate.setHours(0, 0, 0, 0);
-        
-        while (currentDate <= todayDate) {
-          const year = currentDate.getFullYear();
-          const month = String(currentDate.getMonth() + 1).padStart(2, '0');
-          const day = String(currentDate.getDate()).padStart(2, '0');
-          const dateStr = `${year}-${month}-${day}`;
-          const dayInfo = historyMap[dateStr];
-          const hasActivity = dayInfo?.hasActivity || false;
-          const activityType = dayInfo?.activityType || null;
-          const isToday = dateStr === today;
-          const isYesterday = dateStr === yesterday;
-          const isFreeze = activityType === 'freeze';
+    if (history && history.length > 0) {
+      // Create a map for quick lookup
+      const historyMap: any = {};
+      history.forEach((day: any) => {
+        const dateStr = day.date.split('T')[0]; // Extract date part from ISO string
+        historyMap[dateStr] = {
+          hasActivity: day.has_activity === 1,
+          activityType: day.activity_type
+        };
+      });
+      
+      // Get the registration date (earliest date in history)
+      const registrationDate = history.length > 0 
+        ? new Date(Math.min(...history.map((d: any) => new Date(d.date).getTime())))
+        : new Date();
+      
+      // Generate all dates from registration to today
+      const todayDate = new Date(today + 'T00:00:00');
+      const currentDate = new Date(registrationDate);
+      currentDate.setHours(0, 0, 0, 0);
+      
+      while (currentDate <= todayDate) {
+        const year = currentDate.getFullYear();
+        const month = String(currentDate.getMonth() + 1).padStart(2, '0');
+        const day = String(currentDate.getDate()).padStart(2, '0');
+        const dateStr = `${year}-${month}-${day}`;
+        const dayInfo = historyMap[dateStr];
+        const hasActivity = dayInfo?.hasActivity || false;
+        const isToday = dateStr === today;
+        const isYesterday = dateStr === yesterday;
 
-          if (isToday) {
-            if (hasActivity) {
-              if (isFreeze) {
-                // Hôm nay dùng freeze
-                marked[dateStr] = {
-                  customStyles: {
-                    container: {
-                      backgroundColor: '#06B6D4',
-                      borderRadius: 20,
-                      borderWidth: 2,
-                      borderColor: '#67E8F9',
-                    },
-                    text: {
-                      color: '#FFFFFF',
-                      fontWeight: 'bold',
-                    },
-                  },
-                };
-              } else {
-                // Hôm nay đã hoạt động
-                marked[dateStr] = {
-                  customStyles: {
-                    container: {
-                      backgroundColor: '#FF8A00',
-                      borderRadius: 20,
-                      borderWidth: 2,
-                      borderColor: '#FFB74D',
-                    },
-                    text: {
-                      color: '#FFFFFF',
-                      fontWeight: 'bold',
-                    },
-                  },
-                };
-              }
-            } else {
-              // Hôm nay chưa hoạt động
-              marked[dateStr] = {
-                customStyles: {
-                  container: {
-                    backgroundColor: '#FFFDE7',
-                    borderRadius: 20,
-                    borderWidth: 2,
-                    borderColor: '#FF8A00',
-                  },
-                  text: {
-                    color: '#FF8A00',
-                    fontWeight: 'bold',
-                  },
-                },
-              };
-            }
-          } else if (hasActivity) {
-            if (isFreeze) {
-              // Ngày dùng freeze (quá khứ)
-              marked[dateStr] = {
-                customStyles: {
-                  container: {
-                    backgroundColor: '#06B6D4',
-                    borderRadius: 20,
-                    borderWidth: 2,
-                    borderColor: '#67E8F9',
-                  },
-                  text: {
-                    color: '#FFFFFF',
-                    fontWeight: 'bold',
-                  },
-                },
-              };
-            } else {
-              // Ngày đã hoạt động (quá khứ)
+        if (isToday) {
+          if (hasActivity) {
+              // Hôm nay đã hoạt động
               marked[dateStr] = {
                 customStyles: {
                   container: {
@@ -208,55 +174,84 @@ export default function StreakDetailScreen({ navigation }: StreakDetailScreenPro
                   },
                 },
               };
-            }
           } else {
-            // Check if it's a warning day (yesterday without activity but had activity day before)
-            const dayBeforeDate = new Date(currentDate);
-            dayBeforeDate.setDate(dayBeforeDate.getDate() - 1);
-            const dayBeforeStr = dayBeforeDate.toISOString().split('T')[0];
-            const hadActivityBefore = historyMap[dayBeforeStr]?.hasActivity;
-            
-            if (isYesterday && hadActivityBefore) {
-              // Nghỉ 1 ngày - cảnh báo (màu đỏ)
-              marked[dateStr] = {
-                customStyles: {
-                  container: {
-                    backgroundColor: '#FFEBEE',
-                    borderRadius: 20,
-                    borderWidth: 2,
-                    borderColor: '#EF5350',
-                  },
-                  text: {
-                    color: '#EF5350',
-                    fontWeight: 'bold',
-                  },
+            // Hôm nay chưa hoạt động
+            marked[dateStr] = {
+              customStyles: {
+                container: {
+                  backgroundColor: '#FFFDE7',
+                  borderRadius: 20,
+                  borderWidth: 2,
+                  borderColor: '#FF8A00',
                 },
-              };
-            } else {
-              // Bỏ lỡ (ngắt chuỗi)
-              marked[dateStr] = {
-                customStyles: {
-                  container: {
-                    backgroundColor: '#E0E0E0',
-                    borderRadius: 20,
-                    borderWidth: 1,
-                    borderColor: '#BDBDBD',
-                  },
-                  text: {
-                    color: '#9E9E9E',
-                    fontWeight: 'normal',
-                  },
+                text: {
+                  color: '#FF8A00',
+                  fontWeight: 'bold',
                 },
-              };
-            }
+              },
+            };
           }
+        } else if (hasActivity) {
+            // Ngày đã hoạt động (quá khứ)
+            marked[dateStr] = {
+              customStyles: {
+                container: {
+                  backgroundColor: '#FF8A00',
+                  borderRadius: 20,
+                  borderWidth: 2,
+                  borderColor: '#FFB74D',
+                },
+                text: {
+                  color: '#FFFFFF',
+                  fontWeight: 'bold',
+                },
+              },
+            };
+        } else {
+          // Check if it's a warning day (yesterday without activity but had activity day before)
+          const dayBeforeDate = new Date(currentDate);
+          dayBeforeDate.setDate(dayBeforeDate.getDate() - 1);
+          const dayBeforeStr = dayBeforeDate.toISOString().split('T')[0];
+          const hadActivityBefore = historyMap[dayBeforeStr]?.hasActivity;
           
-          // Move to next day
-          currentDate.setDate(currentDate.getDate() + 1);
+          if (isYesterday && hadActivityBefore) {
+            // Nghỉ 1 ngày - cảnh báo (màu đỏ)
+            marked[dateStr] = {
+              customStyles: {
+                container: {
+                  backgroundColor: '#FFEBEE',
+                  borderRadius: 20,
+                  borderWidth: 2,
+                  borderColor: '#EF5350',
+                },
+                text: {
+                  color: '#EF5350',
+                  fontWeight: 'bold',
+                },
+              },
+            };
+          } else {
+            // Bỏ lỡ (ngắt chuỗi)
+            marked[dateStr] = {
+              customStyles: {
+                container: {
+                  backgroundColor: '#E0E0E0',
+                  borderRadius: 20,
+                  borderWidth: 1,
+                  borderColor: '#BDBDBD',
+                },
+                text: {
+                  color: '#9E9E9E',
+                  fontWeight: 'normal',
+                },
+              },
+            };
+          }
         }
+        
+        // Move to next day
+        currentDate.setDate(currentDate.getDate() + 1);
       }
-    } catch (error) {
-      console.error('Error formatting calendar data:', error);
     }
 
     setMarkedDates(marked);
@@ -279,79 +274,16 @@ export default function StreakDetailScreen({ navigation }: StreakDetailScreenPro
     
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      const result = await fakeApi.recordStreakActivity(userId, 'manual_checkin');
-      if (result.success) {
+      await triggerStreakActivity('manual_checkin');
         Alert.alert(
           'Thành công!', 
           'Đã ghi nhận check-in hôm nay!',
           [{ text: 'OK', onPress: () => loadStreakData() }]
         );
-      } else {
-        Alert.alert('Lỗi', 'Không thể check-in');
-      }
-    } catch (error) {
-      Alert.alert('Lỗi', 'Có lỗi xảy ra. Vui lòng thử lại.');
+    } catch (error: any) {
+      Alert.alert('Lỗi', getErrorMessage(error, 'Có lỗi xảy ra. Vui lòng thử lại.'));
       console.error('Failed to check in:', error);
     }
-  };
-
-  const handleUseFreeze = async () => {
-    // Get current streak status
-    const streakStatus = getStreakState(streakData);
-    
-    // Check if already completed today
-    if (streakStatus.todayCompleted) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-      Alert.alert(
-        'Không cần Freeze', 
-        'Bạn đã có hoạt động hôm nay rồi, không cần dùng freeze!',
-        [{ text: 'OK' }]
-      );
-      return;
-    }
-    
-    // Check if freeze available
-    if (!streakStats || streakStats.freezesLeft <= 0) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert(
-        'Hết Freeze', 
-        'Bạn đã dùng hết freeze tuần này. Freeze sẽ được reset vào thứ Hai!',
-        [{ text: 'OK' }]
-      );
-      return;
-    }
-    
-    // Confirm before using freeze
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    Alert.alert(
-      'Xác nhận dùng Freeze?',
-      `Bạn còn ${streakStats.freezesLeft} freeze. Dùng freeze sẽ giữ streak của bạn cho hôm nay.`,
-      [
-        { text: 'Hủy', style: 'cancel' },
-        {
-          text: 'Dùng Freeze',
-          onPress: async () => {
-            try {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              const result = await fakeApi.useStreakFreeze(userId);
-              if (result.success) {
-                Alert.alert(
-                  'Đã dùng Freeze!', 
-                  'Streak của bạn đã được giữ cho hôm nay.',
-                  [{ text: 'OK', onPress: () => loadStreakData() }]
-                );
-              } else {
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-                Alert.alert('Lỗi', result.error || 'Không thể dùng freeze');
-              }
-            } catch (error) {
-              Alert.alert('Lỗi', 'Có lỗi xảy ra. Vui lòng thử lại.');
-              console.error('Failed to use freeze:', error);
-            }
-          }
-        }
-      ]
-    );
   };
 
   if (loading || !streakData) {
@@ -426,16 +358,6 @@ export default function StreakDetailScreen({ navigation }: StreakDetailScreenPro
               </Button>
             )}
 
-            {streakStats?.freezesLeft > 0 && !streakStatus.todayCompleted && (
-              <Button 
-                mode="outlined" 
-                onPress={handleUseFreeze}
-                style={styles.freezeButton}
-                icon="snowflake"
-              >
-                Dùng Freeze ({streakStats.freezesLeft} còn lại)
-              </Button>
-            )}
           </Card.Content>
         </Card>
 
@@ -464,12 +386,6 @@ export default function StreakDetailScreen({ navigation }: StreakDetailScreenPro
                   label="Tỷ lệ hoàn thành" 
                   value={`${streakStats.completionRate}%`}
                   color="#3B82F6"
-                />
-                <StatItem 
-                  icon="snowflake" 
-                  label="Freeze còn lại" 
-                  value={`${streakStats.freezesLeft}/1`}
-                  color="#06B6D4"
                 />
               </View>
             </Card.Content>
@@ -528,12 +444,6 @@ export default function StreakDetailScreen({ navigation }: StreakDetailScreenPro
                   </Text>
                 </View>
                 <View style={styles.legendItem}>
-                  <View style={[styles.legendCircle, { backgroundColor: '#06B6D4', borderColor: '#67E8F9' }]} />
-                  <Text style={[styles.legendText, { color: theme.colors.onSurfaceVariant }]}>
-                    Dùng Freeze
-                  </Text>
-                </View>
-                <View style={styles.legendItem}>
                   <View style={[styles.legendCircle, { backgroundColor: '#FFFDE7', borderColor: '#FF8A00' }]} />
                   <Text style={[styles.legendText, { color: theme.colors.onSurfaceVariant }]}>
                     Hôm nay (chưa hoạt động)
@@ -589,7 +499,6 @@ const getActivityIcon = (activityType: string): string => {
     case 'budget_check': return 'wallet';
     case 'dashboard_view': return 'view-dashboard';
     case 'manual_checkin': return 'check-circle';
-    case 'freeze': return 'snowflake';
     default: return 'circle';
   }
 };
@@ -666,9 +575,6 @@ const styles = StyleSheet.create({
   },
   checkInButton: {
     marginBottom: 12,
-  },
-  freezeButton: {
-    marginBottom: 8,
   },
   statsCard: {
     margin: 16,

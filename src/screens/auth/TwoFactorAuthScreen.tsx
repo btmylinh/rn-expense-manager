@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, KeyboardAvoidingView, Platform, Image } from 'react-native';
 import { Text } from 'react-native-paper';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { fakeApi } from '../../services/fakeApi';
+import { twoFactorApi } from '../../api';
 import { useAppTheme } from '../../theme';
 import { AuthStackParamList } from '../../navigators/AuthNavigator';
 import { useAuth } from '../../contexts/AuthContext';
@@ -61,14 +61,10 @@ export default function TwoFactorAuthScreen({ route, navigation }: TwoFactorAuth
 		setError(null);
 		try {
 			setResending(true);
-			const result = await fakeApi.resend2FACode(email);
-			if (result.success) {
-				setError(null);
-			} else {
-				setError(result.message || 'Gửi lại mã thất bại');
-			}
+			await twoFactorApi.resendCode(email);
+			setError(null);
 		} catch (e: any) {
-			setError(e.message ?? 'Đã xảy ra lỗi');
+			setError(e.response?.data?.message ?? e.message ?? 'Đã xảy ra lỗi');
 		} finally {
 			setResending(false);
 		}

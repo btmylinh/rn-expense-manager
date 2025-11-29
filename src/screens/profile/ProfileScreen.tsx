@@ -4,15 +4,17 @@ import { View, Alert, ScrollView } from 'react-native';
 import { Avatar, Button, Divider, List, Portal, Dialog, TextInput, Text, Switch } from 'react-native-paper';
 import { useAppTheme } from '../../theme';
 import AppBar from '../../components/AppBar';
-import { fakeApi } from '../../services/fakeApi';
+import { isAxiosError } from 'axios';
 import WalletManagerSheet from '../../components/WalletManagerSheet';
 import CategoryManagerSheet from '../../components/CategoryManagerSheet';
 import { useAuth } from '../../contexts/AuthContext';
+import { userApi, walletApi, twoFactorApi, authApi } from '../../api';
+import { getErrorMessage } from '../../utils/errorHandler';
 
 export default function ProfileScreen({ navigation }: any) {
 	const theme = useAppTheme();
-	const { user, logout } = useAuth();
-	const userId = user?.id || 1;
+	const { user, logout, refreshUser } = useAuth();
+	const userId = user?.id;
 	const [loading, setLoading] = useState(false);
 	const [userName, setUserName] = useState<string>('');
 	const [userEmail, setUserEmail] = useState<string>('');
@@ -24,6 +26,7 @@ export default function ProfileScreen({ navigation }: any) {
 	const [newPwd, setNewPwd] = useState('');
 	const [cfmPwd, setCfmPwd] = useState('');
 
+	const [wallets, setWallets] = useState<any[]>([]);
 	// Wallet management state (delegated to component)
 	const [walletSheetVisible, setWalletSheetVisible] = useState(false);
 	const [currentWalletId, setCurrentWalletId] = useState<number | undefined>(undefined);
@@ -34,34 +37,58 @@ export default function ProfileScreen({ navigation }: any) {
 	const [loading2FA, setLoading2FA] = useState(false);
 
 	useEffect(() => {
-		// Sử dụng thông tin từ AuthContext
-		if (user) {
-			setUserName(user.name || 'Người dùng');
-			setUserEmail(user.email || '');
-		}
-
-		// Load wallet info and 2FA status
-		let mounted = true;
+		let active = true;
 		const load = async () => {
 			try {
 				setLoading(true);
-				const cw = await fakeApi.getCurrentWalletId(userId);
-				if (mounted && (cw as any)?.walletId) setCurrentWalletId((cw as any).walletId);
-				
-				// Load 2FA status
-				const statusRes = await fakeApi.getUser2FAStatus(userId);
-				if (mounted && statusRes.success) {
-					setIs2FAEnabled(statusRes.is_2fa || false);
+				if (user) {
+					setUserName(user.name || 'Người dùng');
+					setUserEmail(user.email || '');
 				}
+				const [profileRes, walletsRes, twoFactorRes] = await Promise.all([
+					userApi.getProfile(),
+					walletApi.getWallets(),
+					twoFactorApi.getStatus(),
+				]);
+				if (!active) return;
+
+				const profile =
+					profileRes.data?.data?.user ??
+					profileRes.data?.user ??
+					profileRes.data;
+				if (profile) {
+					setUserName(profile.name || 'Người dùng');
+					setUserEmail(profile.email || '');
+				}
+
+				const walletList =
+					walletsRes.data?.data?.wallets ??
+					walletsRes.data?.wallets ??
+					walletsRes.data?.data ??
+					[];
+				setWallets(walletList);
+				const defaultWallet = walletList.find((w: any) => w.is_default === 1) || walletList[0];
+				if (defaultWallet) {
+					setCurrentWalletId(defaultWallet.id);
+				}
+
+				const twoFactorData =
+					twoFactorRes.data?.data ??
+					twoFactorRes.data;
+				setIs2FAEnabled(!!twoFactorData?.enabled);
+			} catch (error) {
+				console.error('Failed to load profile info', error);
 			} finally {
+				if (active) {
 				setLoading(false);
+				}
 			}
 		};
 		load();
 		return () => {
-			mounted = false;
+			active = false;
 		};
-	}, [user, userId]);
+	}, [userId, user]);
 
 	const initials = useMemo(() => {
 		const parts = (userName || '').trim().split(' ').filter(Boolean);
@@ -79,16 +106,16 @@ export default function ProfileScreen({ navigation }: any) {
 	const saveEdit = async () => {
 		try {
 			setLoading(true);
-			const res = await fakeApi.updateUser(userId, { name: editName.trim(), email: editEmail.trim() });
-			if (res.success && res.user) {
-				setUserName(res.user.name || 'Người dùng');
-				setUserEmail(res.user.email || '');
+			const response = await userApi.updateProfile({ name: editName.trim() });
+			const updated = response.data?.data?.user ?? response.data?.user ?? response.data;
+			if (updated) {
+				setUserName(updated.name || 'Người dùng');
+				setUserEmail(updated.email || '');
+				await refreshUser();
 				setEditVisible(false);
-			} else {
-				Alert.alert('Lỗi', res.message || 'Cập nhật thất bại');
 			}
-		} catch (e: any) {
-			Alert.alert('Lỗi', e?.message || 'Đã xảy ra lỗi');
+		} catch (error) {
+			Alert.alert('Lỗi', getErrorMessage(error, 'Cập nhật thất bại'));
 		} finally {
 			setLoading(false);
 		}
@@ -104,15 +131,12 @@ export default function ProfileScreen({ navigation }: any) {
 	const handleToggle2FA = async (enable: boolean) => {
 		try {
 			setLoading2FA(true);
-			const res = await fakeApi.toggle2FA(userId, enable);
-			if (res.success) {
-				setIs2FAEnabled(enable);
-				Alert.alert('Thành công', res.message || (enable ? 'Đã bật xác thực 2 bước' : 'Đã tắt xác thực 2 bước'));
-			} else {
-				Alert.alert('Lỗi', res.message || 'Cập nhật thất bại');
-			}
-		} catch (e: any) {
-			Alert.alert('Lỗi', e?.message || 'Đã xảy ra lỗi');
+			const result = await twoFactorApi.update(enable);
+			const payload = result.data?.data ?? result.data;
+			setIs2FAEnabled(payload?.enabled ?? enable);
+			Alert.alert('Thành công', enable ? 'Đã bật xác thực 2 bước' : 'Đã tắt xác thực 2 bước');
+		} catch (error) {
+			Alert.alert('Lỗi', getErrorMessage(error, 'Cập nhật thất bại'));
 		} finally {
 			setLoading2FA(false);
 		}
@@ -269,38 +293,61 @@ export default function ProfileScreen({ navigation }: any) {
 					</Dialog.Content>
 					<Dialog.Actions>
 						<Button onPress={() => setPwdVisible(false)}>Hủy</Button>
-						<Button onPress={async () => {
-							if (!curPwd || !newPwd || !cfmPwd) { Alert.alert('Lỗi', 'Vui lòng điền đầy đủ'); return; }
-							if (newPwd.length < 6) { Alert.alert('Lỗi', 'Mật khẩu mới phải từ 6 ký tự'); return; }
-							if (newPwd !== cfmPwd) { Alert.alert('Lỗi', 'Xác nhận mật khẩu không khớp'); return; }
-							try {
-								setLoading(true);
-								const res = await fakeApi.updatePassword(userId, curPwd, newPwd);
-								if ((res as any).success) {
-									Alert.alert('Thành công', 'Đổi mật khẩu thành công');
-									setPwdVisible(false);
-									setCurPwd(''); setNewPwd(''); setCfmPwd('');
-								} else {
-									Alert.alert('Lỗi', (res as any).message || 'Đổi mật khẩu thất bại');
+						<Button
+							onPress={async () => {
+								if (!curPwd || !newPwd || !cfmPwd) {
+									Alert.alert('Lỗi', 'Vui lòng điền đầy đủ');
+									return;
 								}
-							} finally {
-								setLoading(false);
-							}
-						}} loading={loading}>Lưu</Button>
+								if (newPwd.length < 8) {
+									Alert.alert('Lỗi', 'Mật khẩu mới phải từ 8 ký tự, có chữ hoa, chữ thường và số');
+									return;
+								}
+								if (newPwd !== cfmPwd) {
+									Alert.alert('Lỗi', 'Xác nhận mật khẩu không khớp');
+									return;
+								}
+								try {
+									setLoading(true);
+									const res = await authApi.changePassword({ currentPassword: curPwd, newPassword: newPwd });
+									const root = res.data;
+									const code = root?.code;
+									const message = root?.message || 'Đổi mật khẩu thành công';
+									if (code === 'SUCCESS') {
+										Alert.alert('Thành công', message);
+										setPwdVisible(false);
+										setCurPwd('');
+										setNewPwd('');
+										setCfmPwd('');
+									} else {
+										Alert.alert('Lỗi', message || 'Đổi mật khẩu thất bại');
+									}
+								} catch (error: any) {
+									Alert.alert('Lỗi', getErrorMessage(error, 'Đổi mật khẩu thất bại'));
+								} finally {
+									setLoading(false);
+								}
+							}}
+							loading={loading}
+						>
+							Lưu
+						</Button>
 					</Dialog.Actions>
 				</Dialog>
 			</Portal>
 
 			{/* Wallet manager (componentized) */}
 			<WalletManagerSheet
-				userId={userId}
+				userId={userId ?? 0}
 				visible={walletSheetVisible}
 				onDismiss={() => setWalletSheetVisible(false)}
-				onWalletChanged={(id) => setCurrentWalletId(id)}
+				onWalletChanged={(id) => {
+					setCurrentWalletId(id);
+				}}
 			/>
 
 			<CategoryManagerSheet
-				userId={userId}
+				userId={userId ?? 0}
 				visible={categorySheetVisible}
 				onDismiss={() => setCategorySheetVisible(false)}
 				onChanged={() => {

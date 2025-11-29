@@ -26,7 +26,7 @@ const MODAL_HEIGHT = SCREEN_HEIGHT * 0.7;
 interface VoiceRecordingModalProps {
   visible: boolean;
   onDismiss: () => void;
-  onSend: () => void;
+  onSend: (audioUri: string) => void;
   onCancel?: () => void;
 }
 
@@ -221,7 +221,11 @@ export default function VoiceRecordingModal({
   const handleSend = async () => {
     await stopRecording();
     // Pass audio URI to parent component
-    onSend();
+    if (audioUriRef.current) {
+      onSend(audioUriRef.current);
+    } else {
+      Alert.alert('Lỗi', 'Không tìm thấy file ghi âm. Vui lòng thử lại.');
+    }
   };
 
   const handleCancel = async () => {

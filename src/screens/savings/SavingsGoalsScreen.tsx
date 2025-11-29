@@ -8,7 +8,10 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigators/RootNavigator';
 import { useAppTheme } from '../../theme';
 import { useAuth } from '../../contexts/AuthContext';
-import { fakeApi } from '../../services/fakeApi';
+import { savingsGoalApi } from '../../api/savingsGoalApi';
+import { transactionApi } from '../../api/transactionApi';
+import { triggerStreakActivity } from '../../utils/streakHelpers';
+import { TRANSFER_CATEGORY, getTodayDate } from '../../common/transactionCategories';
 import SavingsGoalCard from '../../components/SavingsGoalCard';
 import AppBar from '../../components/AppBar';
 
@@ -18,7 +21,7 @@ export default function SavingsGoalsScreen() {
 	const theme = useAppTheme();
 	const navigation = useNavigation<NavigationProp>();
 	const { user } = useAuth();
-	const userId = user?.id || 1;
+	const userId = user?.id;
 	
 	const [goals, setGoals] = useState<any[]>([]);
 	const [loading, setLoading] = useState(true);
@@ -28,12 +31,21 @@ export default function SavingsGoalsScreen() {
 
 	const loadGoals = async () => {
 		try {
-			const response = await fakeApi.getSavingsGoals(userId);
-			if (response.success) {
+			const response = await savingsGoalApi.getSavingsGoals({ limit: 1000 });
+			const goalsData = response.data?.data?.goals || [];
+			
+			// Map backend fields to frontend format
+			const mappedGoals = goalsData.map((goal: any) => ({
+				...goal,
+				targetAmount: Number(goal.target_amount),
+				currentAmount: Number(goal.current_amount),
+				progress: goal.target_amount > 0 ? (goal.current_amount / goal.target_amount) * 100 : 0,
+				createdAt: goal.created_at,
+			}));
+			
 				// Filter out cancelled goals
-				const activeGoals = response.data.filter((goal: any) => goal.status !== 'cancelled');
+			const activeGoals = mappedGoals.filter((goal: any) => goal.status !== 'cancelled');
 				setGoals(activeGoals);
-			}
 		} catch (error) {
 			console.error('Error loading savings goals:', error);
 		} finally {
@@ -79,13 +91,13 @@ export default function SavingsGoalsScreen() {
 		// If walletId is provided, create transaction to deduct from wallet
 		if (walletId) {
 			try {
-				await fakeApi.createTransaction(userId, {
-					walletId,
-					userCategoryId: 1, // "Tiết kiệm" category
-					amount: amount,
-					transactionDate: new Date().toISOString().split('T')[0],
-					content: `Tiết kiệm cho mục tiêu`,
-					type: 0, // Expense type
+					await transactionApi.createTransaction({
+						wallet_id: walletId,
+						user_category_id: TRANSFER_CATEGORY.SAVINGS.id,
+						amount: amount,
+						transaction_date: getTodayDate(),
+						content: `Tiết kiệm cho mục tiêu`,
+						type: TRANSFER_CATEGORY.SAVINGS.type,
 				});
 			} catch (transactionError) {
 				console.error('Error creating transaction:', transactionError);
@@ -93,12 +105,10 @@ export default function SavingsGoalsScreen() {
 			}
 		}
 
-			const response = await fakeApi.addContribution(userId, goalId, amount, note);
-			if (response.success) {
+			await savingsGoalApi.createContribution(goalId, { amount, note });
+			await triggerStreakActivity('savings_contribution');
 				await loadGoals(); // Refresh the list
 				return true;
-			}
-			return false;
 		} catch (error) {
 			console.error('Error adding contribution:', error);
 			return false;

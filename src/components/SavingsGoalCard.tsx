@@ -1,11 +1,12 @@
 // components/SavingsGoalCard.tsx
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Button, Portal, Modal, TextInput, Snackbar, Chip } from 'react-native-paper';
 import { useAppTheme } from '../theme';
 import { useAuth } from '../contexts/AuthContext';
-import {fakeApi} from '../services/fakeApi';
+import { useMetadata } from '../contexts/MetadataContext';
+import WalletSelectModal from './WalletSelectModal';
 
 interface SavingsGoalCardProps {
 	goal: {
@@ -28,7 +29,7 @@ interface SavingsGoalCardProps {
 export default function SavingsGoalCard({ goal, onPress, onAddMoney, onEdit }: SavingsGoalCardProps) {
 	const theme = useAppTheme();
 	const { user } = useAuth();
-	const userId = user?.id || 0;
+	const userId = user?.id;
 	const progress = goal.progress || 0;
 	const remaining = goal.targetAmount - goal.currentAmount;
 	const accent = goal.color || theme.colors.primary;
@@ -54,31 +55,27 @@ export default function SavingsGoalCard({ goal, onPress, onAddMoney, onEdit }: S
 	
 	// Wallet selection state
 	const [selectedWalletId, setSelectedWalletId] = useState<number | null>(null);
-	const [wallets, setWallets] = useState<any[]>([]);
 	const [showWalletDropdown, setShowWalletDropdown] = useState(false);
+	const { wallets, ensureWallets, refreshWallets } = useMetadata();
 	
 	// Load wallets when modal opens
 	React.useEffect(() => {
-		if (addMoneyModalVisible) {
-			loadWallets();
-		}
-	}, [addMoneyModalVisible]);
-	
-	const loadWallets = async () => {
-		try {
-			const walletList = await fakeApi.getWallets(userId);
-			if (walletList && walletList.length > 0) {
-				setWallets(walletList);
-				// Set default wallet as selected
-				const defaultWallet = walletList.find(w => w.is_default);
-				if (defaultWallet) {
-					setSelectedWalletId(defaultWallet.id);
-				}
+		if (!addMoneyModalVisible) return;
+		refreshWallets();
+		ensureWallets();
+	}, [addMoneyModalVisible, ensureWallets, refreshWallets]);
+
+	React.useEffect(() => {
+		if (!addMoneyModalVisible) return;
+		if (!wallets.length) return;
+		setSelectedWalletId(prev => {
+			if (prev !== null && wallets.some(w => w.id === prev)) {
+				return prev;
 			}
-		} catch (error) {
-			console.error('Error loading wallets:', error);
-		}
-	};
+			const defaultWallet = wallets.find((w: any) => w.isDefault || w.is_default === 1);
+			return defaultWallet?.id ?? wallets[0]?.id ?? null;
+		});
+	}, [addMoneyModalVisible, wallets]);
 	
 	// Calculate days remaining and goal state
 	const today = new Date();
@@ -392,95 +389,20 @@ export default function SavingsGoalCard({ goal, onPress, onAddMoney, onEdit }: S
 				</Modal>
 			</Portal>
 
-			{/* Wallet Dropdown Modal */}
-			<Portal>
-				<Modal
+			<WalletSelectModal
 					visible={showWalletDropdown}
+				wallets={wallets}
+				selectedWalletId={selectedWalletId}
 					onDismiss={() => setShowWalletDropdown(false)}
-					contentContainerStyle={[styles.dropdownModal, { backgroundColor: theme.colors.surface }]}
-				>
-					<Text style={[styles.dropdownTitle, { color: theme.colors.onSurface }]}>
-						Chọn ví để trừ tiền
-					</Text>
-					
-					<ScrollView style={styles.dropdownList}>
-						{/* No wallet option */}
-						<TouchableOpacity
-							style={[styles.dropdownItem, { 
-								backgroundColor: selectedWalletId === null ? theme.colors.primaryContainer : 'transparent' 
-							}]}
-							onPress={() => {
-								setSelectedWalletId(null);
+				onSelect={(walletId) => {
+					setSelectedWalletId(walletId);
 								setShowWalletDropdown(false);
 							}}
-						>
-							<MaterialCommunityIcons 
-								name="wallet-outline" 
-								size={24} 
-								color={selectedWalletId === null ? theme.colors.primary : theme.colors.onSurfaceVariant} 
-							/>
-							<View style={styles.dropdownItemText}>
-								<Text style={[styles.dropdownItemTitle, { 
-									color: selectedWalletId === null ? theme.colors.primary : theme.colors.onSurface 
-								}]}>
-									Không trừ ví
-								</Text>
-								<Text style={[styles.dropdownItemSubtitle, { 
-									color: selectedWalletId === null ? theme.colors.primary : theme.colors.onSurfaceVariant 
-								}]}>
-									Chỉ ghi nhận vào mục tiêu
-								</Text>
-							</View>
-							{selectedWalletId === null && (
-								<MaterialCommunityIcons 
-									name="check" 
-									size={20} 
-									color={theme.colors.primary} 
-								/>
-							)}
-						</TouchableOpacity>
-
-						{/* Wallet options */}
-						{wallets.map((wallet) => (
-							<TouchableOpacity
-								key={wallet.id}
-								style={[styles.dropdownItem, { 
-									backgroundColor: selectedWalletId === wallet.id ? theme.colors.primaryContainer : 'transparent' 
-								}]}
-								onPress={() => {
-									setSelectedWalletId(wallet.id);
-									setShowWalletDropdown(false);
-								}}
-							>
-								<MaterialCommunityIcons 
-									name="wallet" 
-									size={24} 
-									color={selectedWalletId === wallet.id ? theme.colors.primary : theme.colors.onSurfaceVariant} 
-								/>
-								<View style={styles.dropdownItemText}>
-									<Text style={[styles.dropdownItemTitle, { 
-										color: selectedWalletId === wallet.id ? theme.colors.primary : theme.colors.onSurface 
-									}]}>
-										{wallet.name}
-									</Text>
-									<Text style={[styles.dropdownItemSubtitle, { 
-										color: selectedWalletId === wallet.id ? theme.colors.primary : theme.colors.onSurfaceVariant 
-									}]}>
-										{wallet.amount.toLocaleString()} {wallet.currency}
-									</Text>
-								</View>
-								{selectedWalletId === wallet.id && (
-									<MaterialCommunityIcons 
-										name="check" 
-										size={20} 
-										color={theme.colors.primary} 
-									/>
-								)}
-							</TouchableOpacity>
-						))}
-					</ScrollView>
-				</Modal>
-			</Portal>
+				title="Chọn ví để trừ tiền"
+				allowNone
+				noneLabel="Không trừ ví"
+				noneDescription="Chỉ ghi nhận vào mục tiêu"
+			/>
 
 			<Snackbar
 				visible={!!snackMessage}
@@ -686,41 +608,5 @@ const styles = StyleSheet.create({
 		fontWeight: '500',
 		marginHorizontal: 8,
 		flex: 1,
-	},
-	dropdownModal: {
-		margin: 20,
-		borderRadius: 12,
-		padding: 20,
-		maxHeight: '70%',
-	},
-	dropdownTitle: {
-		fontSize: 18,
-		fontWeight: '600',
-		marginBottom: 16,
-		textAlign: 'center',
-	},
-	dropdownList: {
-		maxHeight: 300,
-	},
-	dropdownItem: {
-		flexDirection: 'row',
-		alignItems: 'center',
-		paddingVertical: 12,
-		paddingHorizontal: 16,
-		borderRadius: 8,
-		marginBottom: 4,
-	},
-	dropdownItemText: {
-		flex: 1,
-		marginLeft: 12,
-	},
-	dropdownItemTitle: {
-		fontSize: 16,
-		fontWeight: '500',
-		marginBottom: 2,
-	},
-	dropdownItemSubtitle: {
-		fontSize: 12,
-		opacity: 0.7,
 	},
 });

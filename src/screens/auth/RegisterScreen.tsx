@@ -1,13 +1,43 @@
 // screens/RegisterScreen.tsx
-import React, { useMemo, useState } from 'react';
-import { View, KeyboardAvoidingView, Platform, ScrollView, Image, StyleSheet } from 'react-native';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
+import { View, KeyboardAvoidingView, Platform, ScrollView, Image, StyleSheet, ActivityIndicator } from 'react-native';
 import { Button, TextInput, HelperText, Text } from 'react-native-paper';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { fakeApi } from '../../services/fakeApi';
+import { isAxiosError } from 'axios';
+import { authApi } from '../../api/authApi';
 import { useAppTheme } from '../../theme';
 import { AuthStackParamList } from '../../navigators/AuthNavigator';
+import { getErrorMessage } from '../../utils/errorHandler';
 
 const isEmail = (v: string) => /.+@.+\..+/.test(v);
+
+// Validate password theo yêu cầu backend: ít nhất 8 ký tự, có chữ hoa, chữ thường và số
+const validatePassword = (password: string): { isValid: boolean; message: string } => {
+	if (password.length === 0) {
+		return { isValid: true, message: '' };
+	}
+	if (password.length < 8) {
+		return { isValid: false, message: 'Mật khẩu tối thiểu 8 ký tự' };
+	}
+	const hasLowerCase = /[a-z]/.test(password);
+	const hasUpperCase = /[A-Z]/.test(password);
+	const hasNumber = /\d/.test(password);
+	const hasOnlyAllowedChars = /^[a-zA-Z\d]+$/.test(password);
+	
+	if (!hasLowerCase) {
+		return { isValid: false, message: 'Mật khẩu phải có chữ thường' };
+	}
+	if (!hasUpperCase) {
+		return { isValid: false, message: 'Mật khẩu phải có chữ hoa' };
+	}
+	if (!hasNumber) {
+		return { isValid: false, message: 'Mật khẩu phải có số' };
+	}
+	if (!hasOnlyAllowedChars) {
+		return { isValid: false, message: 'Mật khẩu chỉ được chứa chữ và số' };
+	}
+	return { isValid: true, message: '' };
+};
 
 interface RegisterScreenProps {
   navigation: NativeStackNavigationProp<AuthStackParamList, 'Register'>;
@@ -23,31 +53,128 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
 	const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 	const [loading, setLoading] = useState(false);
 	const [formError, setFormError] = useState<string | null>(null);
+	const [emailExists, setEmailExists] = useState(false);
+	const [checkingEmail, setCheckingEmail] = useState(false);
+	const emailCheckTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-	const nameError = useMemo(() => (name.length === 0 ? '' : name.length < 2 ? 'Tên tối thiểu 2 ký tự' : ''), [name]);
-	const emailError = useMemo(() => (email.length === 0 ? '' : isEmail(email) ? '' : 'Email không hợp lệ'), [email]);
-	const passwordError = useMemo(() => (password.length === 0 ? '' : password.length < 6 ? 'Mật khẩu tối thiểu 6 ký tự' : ''), [password]);
-	const confirmPasswordError = useMemo(() => (confirmPassword.length === 0 ? '' : password !== confirmPassword ? 'Mật khẩu không khớp' : ''), [password, confirmPassword]);
+	const nameError = useMemo(() => (name.length === 0 ? '' : name.trim().length < 2 ? 'Tên tối thiểu 2 ký tự' : ''), [name]);
+	
+	const emailFormatError = useMemo(() => {
+		if (email.length === 0) return '';
+		if (!isEmail(email)) return 'Email không hợp lệ';
+		return '';
+	}, [email]);
+	
+	const emailError = useMemo(() => {
+		if (emailFormatError) return emailFormatError;
+		if (emailExists) return 'Email đã được sử dụng';
+		return '';
+	}, [emailFormatError, emailExists]);
+	
+	const passwordValidation = useMemo(() => validatePassword(password), [password]);
+	const passwordError = passwordValidation.message;
+	const confirmPasswordError = useMemo(() => {
+		if (confirmPassword.length === 0) return '';
+		if (password !== confirmPassword) return 'Mật khẩu không khớp';
+		return '';
+	}, [password, confirmPassword]);
+
+	// Check email exists khi email hợp lệ và user đã nhập xong
+	useEffect(() => {
+		// Clear timeout cũ nếu có
+		if (emailCheckTimeoutRef.current) {
+			clearTimeout(emailCheckTimeoutRef.current);
+		}
+
+		// Reset email exists khi email thay đổi
+		setEmailExists(false);
+
+		// Chỉ check nếu email hợp lệ và không rỗng
+		if (!email.trim() || emailFormatError) {
+			return;
+		}
+
+		// Debounce: đợi 500ms sau khi user ngừng gõ
+		emailCheckTimeoutRef.current = setTimeout(async () => {
+			try {
+				setCheckingEmail(true);
+				const response = await authApi.checkEmail(email.trim().toLowerCase());
+				const responseData = response.data;
+				const exists = responseData?.data?.exists ?? responseData?.exists ?? false;
+				setEmailExists(exists);
+			} catch (error) {
+				// Nếu lỗi, không set emailExists để không block user
+				console.error('Error checking email:', error);
+			} finally {
+				setCheckingEmail(false);
+			}
+		}, 500);
+
+		return () => {
+			if (emailCheckTimeoutRef.current) {
+				clearTimeout(emailCheckTimeoutRef.current);
+			}
+		};
+	}, [email, emailFormatError]);
 
 	const onSubmit = async () => {
 		setFormError(null);
-		if (nameError || emailError || passwordError || confirmPasswordError || !name || !email || !password || !confirmPassword) {
-			setFormError('Vui lòng kiểm tra lại thông tin');
+		
+		// Kiểm tra tất cả các trường bắt buộc
+		if (!name.trim() || !email.trim() || !password || !confirmPassword) {
+			setFormError('Vui lòng điền đầy đủ thông tin');
 			return;
 		}
+		
+		// Kiểm tra validation từng trường theo thứ tự
+		if (nameError) {
+			setFormError(nameError);
+			return;
+		}
+		
+		if (emailError) {
+			setFormError(emailError);
+			return;
+		}
+		
+		// Kiểm tra lại email exists trước khi submit (nếu đang check thì đợi)
+		if (checkingEmail) {
+			setFormError('Đang kiểm tra email...');
+			return;
+		}
+		
+		if (emailExists) {
+			setFormError('Email đã được sử dụng');
+			return;
+		}
+		
+		if (!passwordValidation.isValid || passwordError) {
+			setFormError(passwordError || 'Mật khẩu không hợp lệ');
+			return;
+		}
+		
+		if (confirmPasswordError) {
+			setFormError(confirmPasswordError);
+			return;
+		}
+		
+		// Tất cả validation đã pass, gửi request
 		try {
 			setLoading(true);
-			const result = await fakeApi.register(email, password);
-			
-			if (!result.success) {
-				setFormError(result.message);
-				return;
+			const payload = {
+				name: name.trim(),
+				email: email.trim().toLowerCase(),
+				password,
+			};
+			await authApi.register(payload);
+			navigation.navigate('ConfirmEmail', { email: payload.email });
+		} catch (error) {
+			const errorMessage = getErrorMessage(error, 'Đã xảy ra lỗi khi đăng ký');
+			// Nếu lỗi là email đã tồn tại, set emailExists
+			if (errorMessage.includes('Email') && (errorMessage.includes('đã') || errorMessage.includes('tồn tại') || errorMessage.includes('exists'))) {
+				setEmailExists(true);
 			}
-
-			// Navigate to confirm email screen
-			navigation.navigate('ConfirmEmail', { email });
-		} catch (e: any) {
-			setFormError(e.message ?? 'Đã xảy ra lỗi');
+			setFormError(errorMessage);
 		} finally {
 			setLoading(false);
 		}
@@ -95,10 +222,12 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
 						keyboardType="email-address"
 						mode="outlined"
 						left={<TextInput.Icon icon="email-outline" />}
+						right={checkingEmail ? <ActivityIndicator size="small" color={theme.colors.primary} /> : undefined}
 						error={!!emailError}
 						style={styles.input}
 					/>
 					{!!emailError && <HelperText type="error" visible={!!emailError} style={styles.errorText}>{emailError}</HelperText>}
+					{!emailError && checkingEmail && <HelperText type="info" visible={true} style={styles.errorText}>Đang kiểm tra email...</HelperText>}
 
 					<TextInput
 						label="Mật khẩu"
@@ -141,15 +270,17 @@ export default function RegisterScreen({ navigation }: RegisterScreenProps) {
 					{!!confirmPasswordError && <HelperText type="error" visible={!!confirmPasswordError} style={styles.errorText}>{confirmPasswordError}</HelperText>}
 
 					{formError && (
-						<HelperText type="error" visible={!!formError} style={{ textAlign: 'center', marginBottom: 8 }}>
+						<View style={[styles.errorBanner, { backgroundColor: theme.colors.errorContainer }]}>
+							<Text style={[styles.errorBannerText, { color: theme.colors.onErrorContainer }]}>
 							{formError}
-						</HelperText>
+							</Text>
+						</View>
 					)}
 
 					<Button 
 						mode="contained" 
 						loading={loading} 
-						disabled={loading || !name.trim() || !email.trim() || !password.trim() || !confirmPassword.trim()}
+						disabled={loading || checkingEmail || !!nameError || !!emailError || !!passwordError || !!confirmPasswordError || !name.trim() || !email.trim() || !password || !confirmPassword}
 						onPress={onSubmit} 
 						style={styles.submitButton}
 						contentStyle={styles.submitButtonContent}
@@ -226,5 +357,19 @@ const styles = StyleSheet.create({
 	},
 	footerText: {
 		fontSize: 14,
+	},
+	errorBanner: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'space-between',
+		padding: 12,
+		borderRadius: 8,
+		marginBottom: 16,
+		minHeight: 48,
+	},
+	errorBannerText: {
+		fontSize: 14,
+		lineHeight: 20,
+		textAlign: 'center',
 	},
 });

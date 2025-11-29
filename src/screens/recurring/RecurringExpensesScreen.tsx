@@ -10,11 +10,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RootStackParamList } from '../../navigators/RootNavigator';
 import { useAppTheme, getIconColor } from '../../theme';
 import { useAuth } from '../../contexts/AuthContext';
-import { fakeApi } from '../../services/fakeApi';
+import { recurringExpenseApi } from '../../api/recurringExpenseApi';
+import { userCategoryApi } from '../../api/userCategoryApi';
+import { walletApi } from '../../api/walletApi';
 import AppBar from '../../components/AppBar';
+import { getErrorMessage } from '../../utils/errorHandler';
 import BottomSheet from '../../components/BottomSheet';
 import CategorySelectModal from '../../components/CategorySelectModal';
 import FrequencySelectModal from '../../components/FrequencySelectModal';
+import WalletSelectModal from '../../components/WalletSelectModal';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -44,7 +48,7 @@ export default function RecurringExpensesScreen() {
 	const theme = useAppTheme();
 	const navigation = useNavigation<NavigationProp>();
 	const { user } = useAuth();
-	const userId = user?.id || 1;
+	const userId = user?.id;
 	const insets = useSafeAreaInsets();
 	
 	const [expenses, setExpenses] = useState<RecurringExpense[]>([]);
@@ -71,25 +75,50 @@ export default function RecurringExpensesScreen() {
 	const [showDatePicker, setShowDatePicker] = useState(false);
 	const [showFrequencyModal, setShowFrequencyModal] = useState(false);
 	const [showCategoryModal, setShowCategoryModal] = useState(false);
+	const [showWalletModal, setShowWalletModal] = useState(false);
 	
 	const [categories, setCategories] = useState<any[]>([]);
-	const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'inactive'>('all');
+	const [wallets, setWallets] = useState<any[]>([]);
+const [formWalletId, setFormWalletId] = useState<number>(0);
+const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'inactive'>('all');
+const [pendingPattern, setPendingPattern] = useState<any>(null); // Pattern đang chờ chọn ví
+const [patternWalletPickerId, setPatternWalletPickerId] = useState<string | number | null>(null);
 
 	useEffect(() => {
 		loadCategories();
+		loadWallets();
 	}, []);
 
 	useFocusEffect(
 		React.useCallback(() => {
+			if (categories.length > 0) {
 			loadExpenses();
-		}, [])
+			}
+		}, [categories.length])
+	);
+
+	const getSuggestedWalletId = React.useCallback((): number | null => {
+		return (
+			wallets.find((w: any) => w.is_default === 1 || w.isDefault)?.id ||
+			wallets[0]?.id ||
+			null
+		);
+	}, [wallets]);
+
+	const getWalletDisplayName = React.useCallback(
+		(walletId?: number | null) => {
+			if (!walletId) return 'Chọn ví';
+			return wallets.find((w: any) => w.id === walletId)?.name || 'Chọn ví';
+		},
+		[wallets]
 	);
 
 	const loadCategories = async () => {
 		try {
-			const response = await fakeApi.getUserCategories(userId);
+			const response = await userCategoryApi.getUserCategories();
+			const categoriesData = response.data?.data || [];
 			// Filter only expense categories (type = 2)
-			const expenseCategories = response.filter((cat: any) => cat.type === 2);
+			const expenseCategories = categoriesData.filter((cat: any) => cat.type === 2);
 			setCategories(expenseCategories);
 			if (expenseCategories.length > 0 && formCategoryId === 0) {
 				setFormCategoryId(expenseCategories[0].id);
@@ -99,12 +128,62 @@ export default function RecurringExpensesScreen() {
 		}
 	};
 
+	useEffect(() => {
+		if (!wallets.length) return;
+		setDetectedPatterns(prev =>
+			Array.isArray(prev)
+				? prev.map(pattern =>
+						pattern && pattern.selectedWalletId
+							? pattern
+							: { ...pattern, selectedWalletId: getSuggestedWalletId() }
+				  )
+				: prev
+		);
+	}, [wallets, getSuggestedWalletId]);
+
+	const loadWallets = async () => {
+		try {
+			const response = await walletApi.getWallets();
+			const walletsData = response.data?.wallets || [];
+			setWallets(walletsData);
+			// Set default wallet
+			const defaultWallet = walletsData.find((w: any) => w.is_default === 1);
+			if (defaultWallet && formWalletId === 0) {
+				setFormWalletId(defaultWallet.id);
+			} else if (walletsData.length > 0 && formWalletId === 0) {
+				setFormWalletId(walletsData[0].id);
+			}
+		} catch (error) {
+			console.error('Error loading wallets:', error);
+		}
+	};
+
 	const loadExpenses = async () => {
 		try {
-			const response = await fakeApi.getRecurringExpenses(userId);
-			if (response.success) {
-				setExpenses(response.data);
-			}
+			const response = await recurringExpenseApi.getRecurringExpenses({ limit: 1000 });
+			const expensesData = response.data?.data?.expenses || [];
+			
+			// Map backend fields to frontend format and enrich with category info
+			const mappedExpenses = expensesData.map((exp: any) => {
+				const category = categories.find(c => c.id === exp.user_category_id);
+				return {
+					...exp,
+					userId: exp.user_id,
+					walletId: exp.wallet_id,
+					categoryId: exp.user_category_id,
+					categoryName: category?.name,
+					categoryIcon: category?.icon,
+					categoryColor: category?.color,
+					nextDueDate: exp.next_due_date,
+					isActive: exp.is_active === 1,
+					isAutoDetected: exp.is_auto_detected === 1,
+					reminderDaysBefore: exp.reminder_days_before,
+					createdAt: exp.created_at,
+					updatedAt: exp.updated_at,
+				};
+			});
+			
+			setExpenses(mappedExpenses);
 		} catch (error) {
 			console.error('Error loading recurring expenses:', error);
 		} finally {
@@ -121,14 +200,33 @@ export default function RecurringExpensesScreen() {
 	const handleDetectPatterns = async () => {
 		setDetectingPatterns(true);
 		try {
-			const response = await fakeApi.detectRecurringExpenses(userId);
-			if (response.success) {
-				setDetectedPatterns(response.data);
+			const response = await recurringExpenseApi.detectRecurringExpenses();
+			// Response format: { data: { detected: [...], count: number } }
+			const detected = response.data?.data?.detected || response.data?.data || [];
+			if (!Array.isArray(detected)) {
+				console.warn('Detected patterns is not an array:', detected);
+				setDetectedPatterns([]);
 				setShowDetectDialog(true);
+				return;
 			}
-		} catch (error) {
+
+			const normalized = detected.map((pattern: any, index: number) => ({
+				...pattern,
+				tempId: pattern.id ?? `pattern-${Date.now()}-${index}`,
+				selectedWalletId: pattern.selectedWalletId ?? getSuggestedWalletId(),
+			}));
+			setDetectedPatterns(normalized);
+			setShowDetectDialog(true);
+
+			if (normalized.length === 0) {
+				// empty state handles message
+			}
+		} catch (error: any) {
 			console.error('Error detecting patterns:', error);
-			Alert.alert('Lỗi', 'Không thể phát hiện pattern chi tiêu');
+			const errorMessage = error?.response?.data?.message || 'Không thể phát hiện chi tiêu định kỳ';
+			Alert.alert('Lỗi', errorMessage);
+			setDetectedPatterns([]);
+			setShowDetectDialog(false);
 		} finally {
 			setDetectingPatterns(false);
 		}
@@ -138,10 +236,9 @@ export default function RecurringExpensesScreen() {
 		setLoadingPrediction(true);
 		setShowPredictionDialog(true);
 		try {
-			const response = await fakeApi.predictNextMonthExpenses(userId);
-			if (response.success) {
-				setPredictions(response.data);
-			}
+			const response = await recurringExpenseApi.predictNextMonthExpenses();
+			const predictionsData = response.data?.data || null;
+			setPredictions(predictionsData);
 		} catch (error) {
 			console.error('Error predicting expenses:', error);
 			Alert.alert('Lỗi', 'Không thể dự báo chi tiêu');
@@ -151,26 +248,97 @@ export default function RecurringExpensesScreen() {
 	};
 
 	const handleAddFromPattern = async (pattern: any) => {
+		// Kiểm tra danh mục trước
+		if (!pattern.user_category_id) {
+			Alert.alert('Lỗi', 'Không thể xác định danh mục. Vui lòng thêm thủ công.');
+			return;
+		}
+
+		// Đảm bảo wallets đã được load
+		if (wallets.length === 0) {
+			await loadWallets();
+		}
+
+		let walletId = pattern.selectedWalletId || formWalletId;
+		if (!walletId) {
+			walletId = getSuggestedWalletId();
+		}
+
+		if (!walletId) {
+			Alert.alert('Lỗi', 'Bạn chưa có ví nào. Vui lòng tạo ví trước.');
+			return;
+		}
+
+		await createRecurringExpenseFromPattern(pattern, walletId);
+	};
+
+	const openPatternEditor = (pattern: any) => {
+		if (!pattern.user_category_id) {
+			Alert.alert('Lỗi', 'Không thể xác định danh mục. Vui lòng chỉnh sửa thủ công.');
+			return;
+		}
+		const walletId =
+			pattern.selectedWalletId ||
+			formWalletId ||
+			getSuggestedWalletId();
+		if (!walletId) {
+			Alert.alert('Lỗi', 'Bạn chưa có ví nào. Vui lòng tạo ví trước.');
+			return;
+		}
+
+		setFormName(pattern.name || '');
+		setFormAmount(String(pattern.amount || ''));
+		setFormCategoryId(pattern.user_category_id);
+		setFormFrequency(pattern.frequency || 'monthly');
+		setFormNextDueDate(pattern.next_due_date ? new Date(pattern.next_due_date) : new Date());
+		setFormReminderDays(String(pattern.reminder_days_before || 2));
+		setFormNote(pattern.reason || '');
+		setFormWalletId(walletId);
+		setShowAddDialog(true);
+		setShowDetectDialog(false);
+	};
+
+	const handlePatternWalletChange = (patternId: string | number, walletId: number | null) => {
+		if (walletId == null) return;
+		setDetectedPatterns(prev =>
+			Array.isArray(prev)
+				? prev.map(pattern =>
+						pattern.tempId === patternId ? { ...pattern, selectedWalletId: walletId } : pattern
+				  )
+				: prev
+		);
+	};
+
+	const createRecurringExpenseFromPattern = async (pattern: any, walletId: number) => {
 		try {
-			const response = await fakeApi.createRecurringExpense(userId, {
+			await recurringExpenseApi.createRecurringExpense({
+				wallet_id: walletId,
 				name: pattern.name,
 				amount: pattern.amount,
-				categoryId: pattern.categoryId,
+				user_category_id: pattern.user_category_id,
 				frequency: pattern.frequency,
-				nextDueDate: pattern.nextDueDate,
-				reminderDaysBefore: 2,
-				note: `Phát hiện tự động (${pattern.occurrences} lần, độ tin cậy ${pattern.confidence}%)`
+				start_date: pattern.next_due_date || pattern.nextDueDate,
+				next_due_date: pattern.next_due_date || pattern.nextDueDate,
+				reminder_days_before: 2,
+				notes: `Phát hiện tự động (${pattern.evidence_count || pattern.occurrences || 0} lần, độ tin cậy ${pattern.confidence || 0}%)${pattern.reason ? `. ${pattern.reason}` : ''}`
 			});
 			
-			if (response.success) {
-				Alert.alert('Thành công', 'Đã thêm chi tiêu định kỳ');
-				loadExpenses();
-				// Remove from detected patterns
-				setDetectedPatterns(prev => prev.filter(p => p !== pattern));
-			}
-		} catch (error) {
+			Alert.alert('Thành công', 'Đã thêm chi tiêu định kỳ');
+			loadExpenses();
+			// Remove from detected patterns
+			setDetectedPatterns(prev =>
+				Array.isArray(prev)
+					? prev.filter(p =>
+							p.tempId && pattern.tempId
+								? p.tempId !== pattern.tempId
+								: p !== pattern
+					  )
+					: prev
+			);
+			setPendingPattern(null);
+		} catch (error: any) {
 			console.error('Error adding expense:', error);
-			Alert.alert('Lỗi', 'Không thể thêm chi tiêu định kỳ');
+			Alert.alert('Lỗi', getErrorMessage(error, 'Không thể thêm chi tiêu định kỳ'));
 		}
 	};
 
@@ -184,6 +352,7 @@ export default function RecurringExpensesScreen() {
 		setFormName(expense.name);
 		setFormAmount(expense.amount.toString());
 		setFormCategoryId(expense.categoryId);
+		setFormWalletId((expense as any).walletId || (expense as any).wallet_id || formWalletId);
 		setFormFrequency(expense.frequency);
 		setFormNextDueDate(new Date(expense.nextDueDate));
 		setFormReminderDays(expense.reminderDaysBefore.toString());
@@ -195,6 +364,8 @@ export default function RecurringExpensesScreen() {
 		setFormName('');
 		setFormAmount('');
 		setFormCategoryId(categories.length > 0 ? categories[0].id : 0);
+		const defaultWallet = wallets.find((w: any) => w.is_default === 1);
+		setFormWalletId(defaultWallet?.id || (wallets.length > 0 ? wallets[0].id : 0));
 		setFormFrequency('monthly');
 		setFormNextDueDate(new Date());
 		setFormReminderDays('1');
@@ -202,7 +373,7 @@ export default function RecurringExpensesScreen() {
 	};
 
 	const handleSaveExpense = async () => {
-		if (!formName.trim() || !formAmount || formCategoryId === 0) {
+		if (!formName.trim() || !formAmount || formCategoryId === 0 || formWalletId === 0) {
 			Alert.alert('Lỗi', 'Vui lòng điền đầy đủ thông tin');
 			return;
 		}
@@ -215,33 +386,34 @@ export default function RecurringExpensesScreen() {
 
 		try {
 			const data = {
+				wallet_id: formWalletId,
 				name: formName.trim(),
 				amount: Math.abs(amount), // Ensure positive amount
-				categoryId: formCategoryId,
+				user_category_id: formCategoryId,
 				frequency: formFrequency,
-				nextDueDate: formNextDueDate.toISOString().split('T')[0],
-				reminderDaysBefore: parseInt(formReminderDays) || 1,
-				note: formNote.trim()
+				start_date: formNextDueDate.toISOString().split('T')[0],
+				next_due_date: formNextDueDate.toISOString().split('T')[0],
+				reminder_days_before: parseInt(formReminderDays) || 1,
+				notes: formNote.trim() || undefined,
+				is_active: 1,
 			};
 
-			const response = await fakeApi.createRecurringExpense(userId, data);
+			await recurringExpenseApi.createRecurringExpense(data);
 			
-			if (response.success) {
 				Alert.alert('Thành công', 'Đã thêm chi tiêu định kỳ');
 				setShowAddDialog(false);
 				loadExpenses();
 				resetForm();
-			}
-		} catch (error) {
+		} catch (error: any) {
 			console.error('Error saving expense:', error);
-			Alert.alert('Lỗi', 'Không thể lưu chi tiêu định kỳ');
+			Alert.alert('Lỗi', getErrorMessage(error, 'Không thể lưu chi tiêu định kỳ'));
 		}
 	};
 
 	const handleUpdateExpense = async () => {
 		if (!editingExpense) return;
 
-		if (!formName.trim() || !formAmount || formCategoryId === 0) {
+		if (!formName.trim() || !formAmount || formCategoryId === 0 || formWalletId === 0) {
 			Alert.alert('Lỗi', 'Vui lòng điền đầy đủ thông tin');
 			return;
 		}
@@ -254,40 +426,37 @@ export default function RecurringExpensesScreen() {
 
 		try {
 			const data = {
+				wallet_id: formWalletId,
 				name: formName.trim(),
 				amount: Math.abs(amount),
-				categoryId: formCategoryId,
+				user_category_id: formCategoryId,
 				frequency: formFrequency,
-				nextDueDate: formNextDueDate.toISOString().split('T')[0],
-				reminderDaysBefore: parseInt(formReminderDays) || 1,
-				note: formNote.trim()
+				next_due_date: formNextDueDate.toISOString().split('T')[0],
+				reminder_days_before: parseInt(formReminderDays) || 1,
+				note: formNote.trim() || undefined,
 			};
 
-			const response = await fakeApi.updateRecurringExpense(userId, editingExpense.id, data);
+			await recurringExpenseApi.updateRecurringExpense(editingExpense.id, data);
 			
-			if (response.success) {
 				Alert.alert('Thành công', 'Đã cập nhật chi tiêu định kỳ');
 				setShowEditDialog(false);
 				setEditingExpense(null);
 				loadExpenses();
-			}
-		} catch (error) {
+		} catch (error: any) {
 			console.error('Error updating expense:', error);
-			Alert.alert('Lỗi', 'Không thể cập nhật chi tiêu định kỳ');
+			Alert.alert('Lỗi', getErrorMessage(error, 'Không thể cập nhật chi tiêu định kỳ'));
 		}
 	};
 
 	const handleToggleActive = async (expense: RecurringExpense) => {
 		try {
-			const response = await fakeApi.updateRecurringExpense(userId, expense.id, {
-				isActive: !expense.isActive
+			await recurringExpenseApi.updateRecurringExpense(expense.id, {
+				is_active: expense.isActive ? 0 : 1,
 			});
-			
-			if (response.success) {
 				loadExpenses();
-			}
-		} catch (error) {
+		} catch (error: any) {
 			console.error('Error toggling expense:', error);
+			Alert.alert('Lỗi', getErrorMessage(error, 'Không thể cập nhật trạng thái'));
 		}
 	};
 
@@ -302,14 +471,12 @@ export default function RecurringExpensesScreen() {
 					style: 'destructive',
 					onPress: async () => {
 						try {
-							const response = await fakeApi.deleteRecurringExpense(userId, expense.id);
-							if (response.success) {
+							await recurringExpenseApi.deleteRecurringExpense(expense.id);
 								Alert.alert('Thành công', 'Đã xóa chi tiêu định kỳ');
 								loadExpenses();
-							}
-						} catch (error) {
+						} catch (error: any) {
 							console.error('Error deleting expense:', error);
-							Alert.alert('Lỗi', 'Không thể xóa chi tiêu định kỳ');
+							Alert.alert('Lỗi', getErrorMessage(error, 'Không thể xóa chi tiêu định kỳ'));
 						}
 					}
 				}
@@ -668,6 +835,30 @@ export default function RecurringExpensesScreen() {
 							</View>
 							
 							<TouchableOpacity
+								onPress={() => setShowWalletModal(true)}
+								style={[styles.selectButton, { borderColor: theme.colors.outline, backgroundColor: theme.colors.surface }]}
+							>
+								<View style={styles.selectButtonContent}>
+									<MaterialCommunityIcons
+										name="wallet-outline"
+										size={20}
+										color={theme.colors.primary}
+										style={{ marginRight: 12 }}
+									/>
+									<View style={styles.selectButtonText}>
+										<Text style={[styles.selectButtonValue, { color: theme.colors.onSurface }]}>
+											{wallets.find(w => w.id === formWalletId)?.name || 'Chọn ví'}
+										</Text>
+									</View>
+								</View>
+								<MaterialCommunityIcons
+									name="chevron-down"
+									size={20}
+									color={theme.colors.onSurfaceVariant}
+								/>
+							</TouchableOpacity>
+							
+							<TouchableOpacity
 								onPress={() => setShowCategoryModal(true)}
 								style={[styles.selectButton, { borderColor: theme.colors.outline, backgroundColor: theme.colors.surface }]}
 							>
@@ -884,7 +1075,19 @@ export default function RecurringExpensesScreen() {
 						style={styles.bottomSheetScroll}
 						contentContainerStyle={styles.bottomSheetContent}
 					>
-						{detectedPatterns.length === 0 ? (
+						{detectingPatterns ? (
+							<View style={styles.emptyDetected}>
+								<MaterialCommunityIcons 
+									name="auto-fix" 
+									size={48} 
+									color={theme.colors.primary} 
+									style={{ marginBottom: 12, opacity: 0.6 }}
+								/>
+								<Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 15 }}>
+									Đang phân tích giao dịch...
+								</Text>
+							</View>
+						) : !Array.isArray(detectedPatterns) || detectedPatterns.length === 0 ? (
 							<View style={styles.emptyDetected}>
 								<MaterialCommunityIcons 
 									name="chart-line-variant" 
@@ -895,11 +1098,16 @@ export default function RecurringExpensesScreen() {
 								<Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 15 }}>
 									Không phát hiện được pattern chi tiêu nào
 								</Text>
+								<Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 13, marginTop: 8, textAlign: 'center' }}>
+									Hãy thử thêm nhiều giao dịch hơn để AI có thể phát hiện chi tiêu định kỳ
+								</Text>
 							</View>
 						) : (
 							<View style={styles.patternsList}>
-								{detectedPatterns.map((pattern, index) => (
-									<Card key={index} style={[styles.patternCard, { backgroundColor: theme.colors.surface }]}>
+								{detectedPatterns.map((pattern, index) => {
+									const walletName = getWalletDisplayName(pattern.selectedWalletId);
+									return (
+									<Card key={pattern.tempId ?? index} style={[styles.patternCard, { backgroundColor: theme.colors.surface }]}>
 										<Card.Content>
 											<View style={styles.patternCardContent}>
 												<View style={[styles.patternIconContainer, { backgroundColor: theme.colors.primaryContainer }]}>
@@ -914,31 +1122,64 @@ export default function RecurringExpensesScreen() {
 														{pattern.name}
 													</Text>
 													<Text style={[styles.patternCardMeta, { color: theme.colors.onSurfaceVariant }]}>
-														{pattern.amount.toLocaleString('vi-VN')} đ • {getFrequencyLabel(pattern.frequency)}
+														{pattern.amount?.toLocaleString('vi-VN') || 0} đ • {getFrequencyLabel(pattern.frequency)}
+														{pattern.category_name && ` • ${pattern.category_name}`}
 													</Text>
+													{pattern.reason && (
+														<Text style={[styles.patternReason, { color: theme.colors.onSurfaceVariant }]}>
+															{pattern.reason}
+														</Text>
+													)}
 													<View style={styles.patternCardBadges}>
 														<View style={[styles.confidenceBadge, { backgroundColor: theme.colors.primaryContainer }]}>
 															<Text style={[styles.confidenceText, { color: theme.colors.onPrimaryContainer }]}>
-																{pattern.confidence}% tin cậy
+																{pattern.confidence || 0}% tin cậy
 															</Text>
 														</View>
 														<Text style={[styles.patternOccurrences, { color: theme.colors.onSurfaceVariant }]}>
-															{pattern.occurrences} lần xuất hiện
+															{pattern.evidence_count || pattern.occurrences || 0} lần xuất hiện
 														</Text>
 													</View>
 												</View>
-												<Button
-													mode="contained"
-													compact
-													onPress={() => handleAddFromPattern(pattern)}
-													style={styles.patternAddButton}
-												>
-													Thêm
-												</Button>
+												<View style={styles.patternWalletRow}>
+													<TouchableOpacity
+														style={[styles.patternWalletButton, { borderColor: theme.colors.outline }]}
+														onPress={() => setPatternWalletPickerId(pattern.tempId ?? index)}
+													>
+														<MaterialCommunityIcons name="wallet-outline" size={20} color={theme.colors.primary} />
+														<View style={styles.patternWalletText}>
+															<Text style={[styles.patternWalletLabel, { color: theme.colors.onSurfaceVariant }]}>
+																Ví lưu đề xuất
+															</Text>
+															<Text style={[styles.patternWalletValue, { color: theme.colors.onSurface }]}>
+																{walletName}
+															</Text>
+														</View>
+														<MaterialCommunityIcons name="chevron-right" size={20} color={theme.colors.onSurfaceVariant} />
+													</TouchableOpacity>
+												</View>
+												<View style={styles.patternActions}>
+													<Button
+														mode="outlined"
+														compact
+														onPress={() => openPatternEditor(pattern)}
+														style={styles.patternEditButton}
+													>
+														Sửa trước khi thêm
+													</Button>
+													<Button
+														mode="contained"
+														compact
+														onPress={() => handleAddFromPattern(pattern)}
+														style={styles.patternAddButton}
+													>
+														Thêm nhanh
+													</Button>
+												</View>
 											</View>
 										</Card.Content>
 									</Card>
-								))}
+								)})}
 							</View>
 						)}
 					</ScrollView>
@@ -1147,6 +1388,46 @@ export default function RecurringExpensesScreen() {
 					setShowFrequencyModal(false);
 				}}
 				title="Chọn tần suất"
+			/>
+
+			{/* Wallet Select Modal */}
+			<WalletSelectModal
+				visible={showWalletModal}
+				wallets={wallets}
+				selectedWalletId={formWalletId}
+				onSelect={walletId => {
+					if (walletId == null) return;
+					setFormWalletId(walletId);
+					setShowWalletModal(false);
+					
+					// Nếu có pattern đang chờ, tạo chi tiêu định kỳ ngay
+					if (pendingPattern) {
+						createRecurringExpenseFromPattern(pendingPattern, walletId);
+					}
+				}}
+				onDismiss={() => {
+					setShowWalletModal(false);
+					setPendingPattern(null); // Clear pending pattern khi đóng modal
+				}}
+				title="Chọn ví"
+			/>
+
+			<WalletSelectModal
+				visible={patternWalletPickerId !== null}
+				wallets={wallets}
+				selectedWalletId={
+					patternWalletPickerId != null
+						? detectedPatterns.find(p => p.tempId === patternWalletPickerId)?.selectedWalletId ?? null
+						: null
+				}
+				onSelect={walletId => {
+					if (patternWalletPickerId != null && walletId != null) {
+						handlePatternWalletChange(patternWalletPickerId, walletId);
+					}
+					setPatternWalletPickerId(null);
+				}}
+				onDismiss={() => setPatternWalletPickerId(null)}
+				title="Chọn ví lưu chi tiêu này"
 			/>
 		</View>
 	);
@@ -1453,6 +1734,11 @@ const styles = StyleSheet.create({
 		fontSize: 13,
 		marginBottom: 8,
 	},
+	patternReason: {
+		fontSize: 12,
+		marginTop: 4,
+		fontStyle: 'italic',
+	},
 	patternCardBadges: {
 		flexDirection: 'row',
 		alignItems: 'center',
@@ -1463,7 +1749,36 @@ const styles = StyleSheet.create({
 		fontSize: 12,
 	},
 	patternAddButton: {
-		marginLeft: 8,
+		flex: 1,
+	},
+	patternWalletRow: {
+		marginTop: 12,
+	},
+	patternWalletButton: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		borderWidth: 1,
+		borderRadius: 12,
+		padding: 10,
+		gap: 12,
+	},
+	patternWalletText: {
+		flex: 1,
+	},
+	patternWalletLabel: {
+		fontSize: 12,
+	},
+	patternWalletValue: {
+		fontSize: 15,
+		fontWeight: '600',
+	},
+	patternActions: {
+		flexDirection: 'row',
+		gap: 12,
+		marginTop: 12,
+	},
+	patternEditButton: {
+		flex: 1,
 	},
 	patternItem: {
 		paddingHorizontal: 0,
@@ -1660,4 +1975,6 @@ const styles = StyleSheet.create({
 		opacity: 0.7,
 	},
 });
+
+
 

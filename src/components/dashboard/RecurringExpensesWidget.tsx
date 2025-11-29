@@ -1,14 +1,16 @@
 // components/RecurringExpensesWidget.tsx
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Card } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigators/RootNavigator';
 import { useAppTheme, getIconColor } from '../../theme';
-import { fakeApi } from '../../services/fakeApi';
+import { recurringExpenseApi } from '../../api/recurringExpenseApi';
+import { userCategoryApi } from '../../api/userCategoryApi';
 import { useAuth } from '../../contexts/AuthContext';
+import { formatCurrency } from '../../utils/format';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -16,7 +18,6 @@ const RecurringExpensesWidget = () => {
 	const theme = useAppTheme();
 	const navigation = useNavigation<NavigationProp>();
 	const { user } = useAuth();
-	const userId = user?.id || 1;
 	
 	const [upcomingExpenses, setUpcomingExpenses] = useState<any[]>([]);
 	const [loading, setLoading] = useState(true);
@@ -25,21 +26,53 @@ const RecurringExpensesWidget = () => {
 		loadUpcomingExpenses();
 	}, []);
 
+	// Refresh khi quay lại screen
+	useFocusEffect(
+		React.useCallback(() => {
+			loadUpcomingExpenses();
+		}, [])
+	);
+
 	const loadUpcomingExpenses = async () => {
 		try {
-			const response = await fakeApi.getRecurringExpenses(userId);
-			if (response.success) {
-				// Filter active expenses and sort by next due date
-				const active = response.data
-					.filter((e: any) => e.isActive)
-					.sort((a: any, b: any) => 
-						new Date(a.nextDueDate).getTime() - new Date(b.nextDueDate).getTime()
-					)
-					.slice(0, 3); // Show only next 3
-				setUpcomingExpenses(active);
-			}
+			setLoading(true);
+			// Load both recurring expenses and categories
+			const [expensesResponse, categoriesResponse] = await Promise.all([
+				recurringExpenseApi.getRecurringExpenses({ is_active: 1, limit: 100 }),
+				userCategoryApi.getUserCategories(),
+			]);
+			
+			const expenses = expensesResponse.data?.data?.expenses || [];
+			const categories = categoriesResponse.data?.data || [];
+			
+			console.log('[RecurringExpensesWidget] Loaded expenses:', expenses.length);
+			
+			// Create category map for quick lookup
+			const categoryMap = new Map(categories.map((c: any) => [c.id, c]));
+			
+			// Filter active expenses and sort by next due date
+			const active = expenses
+				.filter((e: any) => e.is_active === 1)
+				.map((e: any) => {
+					const category = categoryMap.get(e.user_category_id);
+					return {
+						id: e.id,
+						name: e.name,
+						amount: Number(e.amount),
+						nextDueDate: e.next_due_date,
+						categoryIcon: (category as any)?.icon || undefined,
+					};
+				})
+				.sort((a: any, b: any) => 
+					new Date(a.nextDueDate).getTime() - new Date(b.nextDueDate).getTime()
+				)
+				.slice(0, 3); // Show only next 3
+			
+			console.log('[RecurringExpensesWidget] Active expenses:', active.length);
+			setUpcomingExpenses(active);
 		} catch (error) {
-			console.error('Error loading upcoming expenses:', error);
+			console.error('[RecurringExpensesWidget] Error loading upcoming expenses:', error);
+			setUpcomingExpenses([]);
 		} finally {
 			setLoading(false);
 		}
@@ -58,8 +91,64 @@ const RecurringExpensesWidget = () => {
 		return date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
 	};
 
-	if (loading || upcomingExpenses.length === 0) {
-		return null;
+	// Hiển thị loading state
+	if (loading) {
+		return (
+			<Card style={[styles.card, { backgroundColor: theme.colors.surface }]}>
+				<Card.Content>
+					<View style={styles.loadingContainer}>
+						<ActivityIndicator size="small" color={theme.colors.primary} />
+						<Text style={[styles.loadingText, { color: theme.colors.onSurfaceVariant }]}>
+							Đang tải chi tiêu định kỳ...
+						</Text>
+					</View>
+				</Card.Content>
+			</Card>
+		);
+	}
+
+	// Hiển thị empty state nếu không có chi tiêu định kỳ
+	if (upcomingExpenses.length === 0) {
+		return (
+			<Card style={[styles.card, { backgroundColor: theme.colors.surface }]}>
+				<Card.Content>
+					<TouchableOpacity 
+						onPress={() => navigation.navigate('RecurringExpenses')}
+						style={[styles.header, { borderBottomColor: theme.colors.outline + '30' }]}
+					>
+						<View style={styles.headerLeft}>
+							<MaterialCommunityIcons 
+								name="repeat" 
+								size={24} 
+								color={theme.colors.primary} 
+							/>
+							<Text style={[styles.title, { color: theme.colors.onSurface }]}>
+								Chi tiêu định kỳ sắp tới
+							</Text>
+						</View>
+						<MaterialCommunityIcons 
+							name="chevron-right" 
+							size={24} 
+							color={theme.colors.onSurfaceVariant} 
+						/>
+					</TouchableOpacity>
+					<View style={styles.emptyContainer}>
+						<MaterialCommunityIcons 
+							name="repeat-off" 
+							size={48} 
+							color={theme.colors.onSurfaceVariant} 
+							style={styles.emptyIcon}
+						/>
+						<Text style={[styles.emptyText, { color: theme.colors.onSurfaceVariant }]}>
+							Chưa có chi tiêu định kỳ
+						</Text>
+						<Text style={[styles.emptySubtext, { color: theme.colors.onSurfaceVariant }]}>
+							Tạo chi tiêu định kỳ để theo dõi dễ dàng hơn
+						</Text>
+					</View>
+				</Card.Content>
+			</Card>
+		);
 	}
 
 	return (
@@ -114,7 +203,7 @@ const RecurringExpensesWidget = () => {
 								</View>
 								<View style={styles.expenseAmount}>
 									<Text style={[styles.amount, { color: theme.colors.error }]}>
-										-{expense.amount.toLocaleString('vi-VN')}
+										-{formatCurrency(expense.amount)}
 									</Text>
 									{(isDueSoon || isOverdue) && (
 										<View style={[
@@ -213,6 +302,35 @@ const styles = StyleSheet.create({
 		borderRadius: 11,
 		alignItems: 'center',
 		justifyContent: 'center',
+	},
+	loadingContainer: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'center',
+		paddingVertical: 20,
+		gap: 12,
+	},
+	loadingText: {
+		fontSize: 14,
+	},
+	emptyContainer: {
+		alignItems: 'center',
+		justifyContent: 'center',
+		paddingVertical: 32,
+	},
+	emptyIcon: {
+		opacity: 0.4,
+		marginBottom: 12,
+	},
+	emptyText: {
+		fontSize: 15,
+		fontWeight: '600',
+		marginBottom: 4,
+	},
+	emptySubtext: {
+		fontSize: 13,
+		textAlign: 'center',
+		paddingHorizontal: 16,
 	},
 });
 

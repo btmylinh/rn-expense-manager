@@ -1,25 +1,59 @@
 // screens/BudgetsScreen.tsx
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { useAppTheme } from '../../theme';
-import { fakeApi } from '../../services/fakeApi';
+import { budgetApi } from '../../api/budgetApi';
 import { Modal, Portal, Snackbar, ProgressBar, Button, IconButton, Card } from 'react-native-paper';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigators/RootNavigator';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import AppBar from '../../components/AppBar';
-import { useAuth } from '../../contexts/AuthContext';
 import BudgetContent from './BudgetContent';
 import WalletSelectModal from '../../components/WalletSelectModal';
+import { useMetadata } from '../../contexts/MetadataContext';
+import { getErrorMessage } from '../../utils/errorHandler';
+
+function toLocalYMD(d: Date) {
+	const year = d.getFullYear();
+	const month = (d.getMonth() + 1).toString().padStart(2, '0');
+	const day = d.getDate().toString().padStart(2, '0');
+	return `${year}-${month}-${day}`;
+}
+
+function formatVNDate(dateStr: string) {
+	const d = new Date(dateStr);
+	return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
+}
+
+function currentPeriods() {
+	const now = new Date();
+	const y = now.getFullYear();
+	const m = now.getMonth();
+	const day = now.getDay();
+	const diffToMonday = (day + 6) % 7;
+	const weekStart = new Date(y, m, now.getDate() - diffToMonday);
+	const weekEnd = new Date(weekStart);
+	weekEnd.setDate(weekStart.getDate() + 6);
+	const monthStart = new Date(y, m, 1);
+	const monthEnd = new Date(y, m + 1, 0);
+	const q = Math.floor(m / 3);
+	const quarterStart = new Date(y, q * 3, 1);
+	const quarterEnd = new Date(y, q * 3 + 3, 0);
+	const yearStart = new Date(y, 0, 1);
+	const yearEnd = new Date(y, 12, 0);
+	return {
+		week: { start: toLocalYMD(weekStart), end: toLocalYMD(weekEnd) },
+		month: { start: toLocalYMD(monthStart), end: toLocalYMD(monthEnd) },
+		quarter: { start: toLocalYMD(quarterStart), end: toLocalYMD(quarterEnd) },
+		year: { start: toLocalYMD(yearStart), end: toLocalYMD(yearEnd) },
+	};
+}
 
 export default function BudgetsScreen() {
 	const theme = useAppTheme();
 	const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-	const { user } = useAuth();
-	const userId = user?.id || 1;
 	const [budgets, setBudgets] = useState<any[]>([]);
-	const [categories, setCategories] = useState<any[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [activeTab, setActiveTab] = useState(0);
 	const [timeTabs, setTimeTabs] = useState<Array<{ label: string, startDate: string, endDate: string }>>([]);
@@ -37,199 +71,176 @@ export default function BudgetsScreen() {
 	const [walletSheetVisible, setWalletSheetVisible] = useState(false);
 	const [currentWalletId, setCurrentWalletId] = useState<number | undefined>(undefined);
 	const [walletName, setWalletName] = useState<string>('Chọn ví');
-	const [wallets, setWallets] = useState<any[]>([]);
+	const { categories, wallets, ensureCategories, ensureWallets, refreshCategories, refreshWallets, defaultWallet } = useMetadata();
 
-	function toLocalYMD(d: Date) {
-		const year = d.getFullYear();
-		const month = (d.getMonth() + 1).toString().padStart(2, '0');
-		const day = d.getDate().toString().padStart(2, '0');
-		return `${year}-${month}-${day}`;
-	}
-	function formatVNDate(dateStr: string) {
-		const d = new Date(dateStr);
-		return `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
-	}
-	function currentPeriods() {
-		const now = new Date();
-		const y = now.getFullYear();
-		const m = now.getMonth();
-		const day = now.getDay();
-		const diffToMonday = (day + 6) % 7;
-		const weekStart = new Date(y, m, now.getDate() - diffToMonday);
-		const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 6);
-		const monthStart = new Date(y, m, 1);
-		const monthEnd = new Date(y, m + 1, 0);
-		const q = Math.floor(m / 3);
-		const quarterStart = new Date(y, q * 3, 1);
-		const quarterEnd = new Date(y, q * 3 + 3, 0);
-		const yearStart = new Date(y, 0, 1);
-		const yearEnd = new Date(y, 12, 0);
-		return {
-			week: { start: toLocalYMD(weekStart), end: toLocalYMD(weekEnd) },
-			month: { start: toLocalYMD(monthStart), end: toLocalYMD(monthEnd) },
-			quarter: { start: toLocalYMD(quarterStart), end: toLocalYMD(quarterEnd) },
-			year: { start: toLocalYMD(yearStart), end: toLocalYMD(yearEnd) },
-		};
-	}
-
-	// Load initial wallet and categories
-	useEffect(() => {
-		(async () => {
-			const [cats, cw, ws] = await Promise.all([
-				fakeApi.getUserCategories(userId),
-				fakeApi.getCurrentWalletId(userId),
-				fakeApi.getWallets(userId),
-			]);
-			setCategories(cats);
-			setWallets(ws);
-			if ((cw as any)?.walletId) {
-				setCurrentWalletId((cw as any).walletId);
-				const w = await fakeApi.getWallet(userId, (cw as any).walletId as number);
-				if ((w as any)?.wallet?.name) setWalletName((w as any).wallet.name);
-			}
-		})();
-	}, []);
-
-	// Load budgets by wallet (API already calculates spent and chartData)
-	useEffect(() => {
-		(async () => {
-			if (!currentWalletId) return;
-			setLoading(true);
-
-			// API already filters active budgets and calculates spent/chartData
-			const data = await fakeApi.getBudgets(userId, currentWalletId);
-
-			// Filter only active budgets (end_date >= today)
+	const mapBudgets = useCallback((data: any[]) => {
 			const now = new Date();
 			const todayOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-			const activeBudgets = data.filter(b => {
+		return data
+			.map((b: any) => ({
+					...b,
+					startDate: b.start_date,
+					endDate: b.end_date,
+					userCategoryId: b.user_category_id,
+					walletId: b.wallet_id,
+					amount: Number(b.amount),
+			}))
+			.filter((b: any) => {
 				const e = new Date(b.endDate);
 				const eOnly = new Date(e.getFullYear(), e.getMonth(), e.getDate());
 				return eOnly.getTime() >= todayOnly.getTime();
 			});
-			setBudgets(activeBudgets);
+	}, []);
 
-			// Build tabs from budget date ranges (simplified)
-			const groups = new Map<string, { startDate: string, endDate: string }>();
+	const buildTabs = useCallback((activeBudgets: Array<{ startDate: string; endDate: string }>) => {
+		const groups = new Map<string, { startDate: string; endDate: string }>();
 			activeBudgets.forEach(b => {
 				const key = `${b.startDate}_${b.endDate}`;
-				if (!groups.has(key)) groups.set(key, { startDate: b.startDate, endDate: b.endDate });
+			if (!groups.has(key)) {
+				groups.set(key, { startDate: b.startDate, endDate: b.endDate });
+			}
 			});
-
 			const periods = currentPeriods();
-			const tabs: Array<{ label: string, startDate: string, endDate: string }> = [];
-
+		const standardFirst: Array<{ label: string; startDate: string; endDate: string }> = [];
+		const customAfter: Array<{ label: string; startDate: string; endDate: string }> = [];
 			groups.forEach(({ startDate, endDate }) => {
 				let label = `${formatVNDate(startDate)} - ${formatVNDate(endDate)}`;
-
-				// Check if it matches standard periods
 				if (startDate === periods.week.start && endDate === periods.week.end) label = 'Tuần này';
 				else if (startDate === periods.month.start && endDate === periods.month.end) label = 'Tháng này';
 				else if (startDate === periods.quarter.start && endDate === periods.quarter.end) label = 'Quý này';
 				else if (startDate === periods.year.start && endDate === periods.year.end) label = 'Năm nay';
+			const tab = { label, startDate, endDate };
+			if (label === 'Tuần này' || label === 'Tháng này' || label === 'Quý này' || label === 'Năm nay') {
+				standardFirst.push(tab);
+			} else {
+				customAfter.push(tab);
+			}
+		});
+		const order = { 'Tuần này': 1, 'Tháng này': 2, 'Quý này': 3, 'Năm nay': 4 } as Record<string, number>;
+		standardFirst.sort((a, b) => (order[a.label] || 99) - (order[b.label] || 99));
+		customAfter.sort((a, b) => (a.startDate < b.startDate ? 1 : -1));
+		return [...standardFirst, ...customAfter];
+	}, []);
 
-				tabs.push({ label, startDate, endDate });
-			});
-
-			// Sort tabs: standard periods first, then custom by date
-			const order = { 'Tuần này': 1, 'Tháng này': 2, 'Quý này': 3, 'Năm nay': 4 };
-			tabs.sort((a, b) => {
-				const aOrder = (order as any)[a.label] || 99;
-				const bOrder = (order as any)[b.label] || 99;
-				if (aOrder !== bOrder) return aOrder - bOrder;
-				return a.startDate < b.startDate ? 1 : -1; // Custom dates: newest first
-			});
-
+	const fetchBudgets = useCallback(
+		async (walletId: number) => {
+			setLoading(true);
+			try {
+				const response = await budgetApi.getBudgets({
+					wallet_id: walletId,
+					limit: 1000,
+				});
+				const data = response.data?.data?.budgets || [];
+				const activeBudgets = mapBudgets(data);
+				setBudgets(activeBudgets);
+				const tabs = buildTabs(activeBudgets);
 			setTimeTabs(tabs);
+				if (tabs.length) {
 			setActiveTab(0);
+				}
+			} catch (error) {
+				console.error('Failed to load budgets:', error);
+			} finally {
 			setLoading(false);
-		})();
-	}, [currentWalletId]);
+			}
+		},
+		[buildTabs, mapBudgets]
+	);
+
+
+	// Ensure metadata cache is available (only once on mount)
+	useEffect(() => {
+		ensureCategories();
+		ensureWallets();
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
+
+	// Sync wallet selection when cache changes
+	useEffect(() => {
+		if (!wallets.length) {
+			setCurrentWalletId(undefined);
+			setWalletName('Chọn ví');
+			return;
+		}
+		setCurrentWalletId(prev => {
+			if (prev && wallets.some(w => w.id === prev)) {
+				return prev;
+			}
+			const fallbackId = defaultWallet?.id ?? wallets[0]?.id;
+			return fallbackId ?? prev ?? undefined;
+		});
+	}, [wallets, defaultWallet]);
+
+	useEffect(() => {
+		if (!currentWalletId) {
+			setWalletName('Chọn ví');
+			return;
+		}
+		const selected = wallets.find(w => w.id === currentWalletId);
+		setWalletName(selected?.name || 'Chọn ví');
+	}, [wallets, currentWalletId]);
+
+	// Load budgets by wallet (API already calculates spent and chartData)
+	useEffect(() => {
+		if (!currentWalletId) return;
+		fetchBudgets(currentWalletId);
+	}, [currentWalletId, fetchBudgets]);
 
 	// Refresh when screen focused
 	useEffect(() => {
 		const unsubscribe = (navigation as any).addListener('focus', async () => {
-			if (!currentWalletId) return;
-			setLoading(true);
-
-			// Reload categories and budgets (API already calculates spent/chartData)
-			const [cats, data] = await Promise.all([
-				fakeApi.getUserCategories(userId),
-				fakeApi.getBudgets(userId, currentWalletId)
-			]);
-
-			setCategories(cats);
-
-			// Filter active budgets
-			const now = new Date();
-			const todayOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-			const activeBudgets = data.filter(b => {
-				const e = new Date(b.endDate);
-				const eOnly = new Date(e.getFullYear(), e.getMonth(), e.getDate());
-				return eOnly.getTime() >= todayOnly.getTime();
-			});
-			setBudgets(activeBudgets);
-
-			// Rebuild tabs from activeBudgets (simplified)
-			const groups = new Map<string, { startDate: string, endDate: string }>();
-			activeBudgets.forEach(b => {
-				const key = `${b.startDate}_${b.endDate}`;
-				if (!groups.has(key)) groups.set(key, { startDate: b.startDate, endDate: b.endDate });
-			});
-			const periods = currentPeriods();
-			const standardFirst: Array<{ label: string, startDate: string, endDate: string }> = [];
-			const customAfter: Array<{ label: string, startDate: string, endDate: string }> = [];
-			groups.forEach(({ startDate, endDate }) => {
-				let label = `${formatVNDate(startDate)} - ${formatVNDate(endDate)}`;
-				if (startDate === periods.week.start && endDate === periods.week.end) label = 'Tuần này';
-				else if (startDate === periods.month.start && endDate === periods.month.end) label = 'Tháng này';
-				else if (startDate === periods.quarter.start && endDate === periods.quarter.end) label = 'Quý này';
-				else if (startDate === periods.year.start && endDate === periods.year.end) label = 'Năm nay';
-				const tab = { label, startDate, endDate };
-				if (label === 'Tuần này' || label === 'Tháng này' || label === 'Quý này' || label === 'Năm nay') standardFirst.push(tab);
-				else customAfter.push(tab);
-			});
-			const order = { 'Tuần này': 1, 'Tháng này': 2, 'Quý này': 3, 'Năm nay': 4 } as Record<string, number>;
-			standardFirst.sort((a, b) => (order[a.label] || 99) - (order[b.label] || 99));
-			customAfter.sort((a, b) => (a.startDate < b.startDate ? 1 : -1));
-			setTimeTabs([...standardFirst, ...customAfter]);
-			setActiveTab(0);
-
-			setLoading(false);
+			try {
+				await Promise.all([refreshCategories(), refreshWallets()]);
+				if (currentWalletId) {
+					await fetchBudgets(currentWalletId);
+				}
+			} catch (error) {
+				console.error('Failed to refresh budgets:', error);
+			}
 		});
 		return unsubscribe;
-	}, [navigation, currentWalletId]);
+	}, [navigation, currentWalletId, refreshCategories, refreshWallets, fetchBudgets]);
 
 	const handleSaveBudget = async () => {
 		if (!formBudget.userCategoryId || !formBudget.amount || !formBudget.startDate) {
 			setSnack('Vui lòng nhập đủ thông tin!'); return;
 		}
+		try {
 		const payload = {
-			userCategoryId: formBudget.userCategoryId,
-			walletId: formBudget.walletId,
-			amount: formBudget.amount,
-			startDate: formBudget.startDate,
-			endDate: formBudget.endDate,
-			isRepeat: formBudget.repeat,
+				user_category_id: formBudget.userCategoryId,
+				wallet_id: formBudget.walletId || currentWalletId,
+				amount: Number(formBudget.amount),
+				start_date: formBudget.startDate,
+				end_date: formBudget.endDate,
+				is_repeat: formBudget.repeat ? 1 : 0,
 		};
 		if (isEdit) {
-			await fakeApi.updateBudget(userId, formBudget.id, payload);
+				await budgetApi.updateBudget(formBudget.id, payload);
 			setSnack('Đã cập nhật ngân sách');
 		} else {
-			const res = await fakeApi.createBudget(userId, payload as any);
-			if (!(res as any).success) { setSnack((res as any).message || 'Không thể tạo'); return; }
+				await budgetApi.createBudget(payload);
 			setSnack('Đã thêm ngân sách');
 		}
-		const data = await fakeApi.getBudgets(userId, currentWalletId);
-		setBudgets(data);
+			if (currentWalletId) {
+				await fetchBudgets(currentWalletId);
+			}
 		setCreateModalVisible(false);
+		} catch (error: any) {
+			setSnack(getErrorMessage(error, 'Có lỗi xảy ra'));
+		}
 	};
 	const handleDelete = async () => {
 		if (!formBudget.id) return;
-		await fakeApi.deleteBudget(userId, formBudget.id);
+		try {
+			await budgetApi.deleteBudget(formBudget.id);
 		setSnack('Đã xoá ngân sách');
 		setCreateModalVisible(false);
-		setBudgets(await fakeApi.getBudgets(userId, currentWalletId));
+			if (currentWalletId) {
+				await fetchBudgets(currentWalletId);
+			}
+		} catch (error: any) {
+			setSnack(getErrorMessage(error, 'Không thể xóa ngân sách'));
+		}
 	};
 	const openCreate = () => {
 		navigation.navigate('BudgetCreate', {
@@ -393,10 +404,13 @@ export default function BudgetsScreen() {
 				wallets={wallets}
 				selectedWalletId={currentWalletId}
 				onDismiss={() => setWalletSheetVisible(false)}
-				onSelect={async (id) => {
+				onSelect={(id) => {
+					if (id == null) return;
 					setCurrentWalletId(id);
-					const w = await fakeApi.getWallet(userId, id);
-					if ((w as any)?.wallet?.name) setWalletName((w as any).wallet.name);
+					const w = wallets.find(w => w.id === id);
+					if (w?.name) {
+						setWalletName(w.name);
+					}
 					setWalletSheetVisible(false);
 				}}
 			/>

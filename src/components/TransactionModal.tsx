@@ -20,6 +20,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { DatePickerModal } from 'react-native-paper-dates';
 import CategorySelectModal from './CategorySelectModal';
 import { getIconColor, useAppTheme } from '../theme';
+import { aiApi } from '../api/aiApi';
+import { getErrorMessage } from '../utils/errorHandler';
 
 interface Transaction {
   id: number;
@@ -80,6 +82,8 @@ export default function TransactionModal({
   const [type, setType] = useState<'income' | 'expense'>('expense');
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [openDatePicker, setOpenDatePicker] = useState(false);
+  const [isDetectingCategory, setIsDetectingCategory] = useState(false);
+  const [autoDetectMessage, setAutoDetectMessage] = useState<string | null>(null);
 
   // Helper functions
   const formatNumberInput = (text: string) => {
@@ -156,6 +160,47 @@ export default function TransactionModal({
 
   const selectedCategory = categories.find(c => c.id === categoryId);
 
+  const handleDetectCategory = useCallback(async () => {
+    const cleanedText = (note || '').trim();
+    if (!cleanedText || cleanedText.length < 3) {
+      setAutoDetectMessage('Nhập nội dung để gợi ý danh mục');
+      return;
+    }
+
+    try {
+      setIsDetectingCategory(true);
+      setAutoDetectMessage('AI đang gợi ý danh mục...');
+
+      const response = await aiApi.detectCategory(cleanedText);
+      const responseData = response.data;
+
+      if (responseData.code !== 'SUCCESS') {
+        setAutoDetectMessage(responseData.message || 'Không thể gợi ý danh mục');
+        return;
+      }
+
+      const suggestion = responseData?.data?.suggestion;
+      if (suggestion?.user_category_id) {
+        setCategoryId(suggestion.user_category_id);
+        if (suggestion.type === 1 || suggestion.type === 2) {
+          setType(suggestion.type === 1 ? 'income' : 'expense');
+        }
+        setAutoDetectMessage(
+          suggestion.category_name
+            ? `Gợi ý: ${suggestion.category_name}`
+            : 'Đã gợi ý danh mục tự động'
+        );
+      } else {
+        setAutoDetectMessage('AI chưa tìm thấy danh mục phù hợp');
+      }
+    } catch (error) {
+      console.error('Failed to auto-detect category:', error);
+      setAutoDetectMessage(getErrorMessage(error, 'Không thể gợi ý danh mục'));
+    } finally {
+      setIsDetectingCategory(false);
+    }
+  }, [note]);
+
   return (
     <Portal>
       <Modal
@@ -172,43 +217,32 @@ export default function TransactionModal({
             {mode === 'edit' ? 'Chỉnh sửa giao dịch' : 'Thêm giao dịch'}
           </Text>
 
-          {/* Category Selection */}
+          {/* Note Input */}
           <View style={styles.fieldRow}>
-            <Text style={styles.fieldLabel}>Danh mục</Text>
-            <TouchableOpacity
-              style={styles.categorySelectBtn}
-              onPress={() => setShowCategoryModal(true)}
-            >
-              {selectedCategory ? (
-                <View style={styles.categoryContent}>
-                  <View
-                    style={[
-                      styles.categoryIconWrap,
-                      {
-                        backgroundColor:
-                          getIconColor(selectedCategory.icon, appTheme) + '22',
-                      },
-                    ]}
-                  >
-                    <MaterialCommunityIcons
-                      name={(selectedCategory.icon as any) || 'tag-outline'}
-                      size={18}
-                      color={getIconColor(selectedCategory.icon, appTheme)}
-                    />
-                  </View>
-                  <Text style={styles.categorySelectedText}>
-                    {selectedCategory.name}
-                  </Text>
-                </View>
-              ) : (
-                <Text style={styles.categoryPlaceholder}>Chọn danh mục</Text>
-              )}
-              <MaterialCommunityIcons
-                name="chevron-right"
-                size={20}
-                color={theme.colors.onSurfaceVariant}
-              />
-            </TouchableOpacity>
+            <Text style={styles.fieldLabel}>Nội dung giao dịch</Text>
+            <TextInput
+              value={note}
+              multiline
+              numberOfLines={4}
+              textAlignVertical="top"
+              onChangeText={(t) => setNote((t || '').slice(0, 250))}
+              onBlur={handleDetectCategory}
+              style={[styles.fieldInput, { minHeight: 96 }]}
+              placeholder="Nhập mô tả giao dịch (VD: cà phê với khách hàng)"
+            />
+            <View style={styles.noteFooter}>
+              <Text style={styles.charCount}>{note.length}/250</Text>
+              {autoDetectMessage ? (
+                <Text
+                  style={[
+                    styles.autoDetectMessage,
+                    isDetectingCategory && { color: '#2563EB' },
+                  ]}
+                >
+                  {autoDetectMessage}
+                </Text>
+              ) : null}
+            </View>
           </View>
 
           {/* Amount Input */}
@@ -253,19 +287,46 @@ export default function TransactionModal({
             />
           </View>
 
-          {/* Note Input */}
+          {/* Category Selection */}
           <View style={styles.fieldRow}>
-            <Text style={styles.fieldLabel}>Nội dung giao dịch</Text>
-            <TextInput
-              value={note}
-              multiline
-              numberOfLines={4}
-              textAlignVertical="top"
-              onChangeText={(t) => setNote((t || '').slice(0, 250))}
-              style={[styles.fieldInput, { minHeight: 96 }]}
-              placeholder="Nhập ghi chú"
-            />
-            <Text style={styles.charCount}>{note.length}/250</Text>
+            <Text style={styles.fieldLabel}>Danh mục</Text>
+            <TouchableOpacity
+              style={styles.categorySelectBtn}
+              onPress={() => setShowCategoryModal(true)}
+              disabled={isDetectingCategory}
+            >
+              {selectedCategory ? (
+                <View style={styles.categoryContent}>
+                  <View
+                    style={[
+                      styles.categoryIconWrap,
+                      {
+                        backgroundColor:
+                          getIconColor(selectedCategory.icon, appTheme) + '22',
+                      },
+                    ]}
+                  >
+                    <MaterialCommunityIcons
+                      name={(selectedCategory.icon as any) || 'tag-outline'}
+                      size={18}
+                      color={getIconColor(selectedCategory.icon, appTheme)}
+                    />
+                  </View>
+                  <Text style={styles.categorySelectedText}>
+                    {selectedCategory.name}
+                  </Text>
+                </View>
+              ) : (
+                <Text style={styles.categoryPlaceholder}>
+                  {isDetectingCategory ? 'Đang gợi ý...' : 'Chọn danh mục'}
+                </Text>
+              )}
+              <MaterialCommunityIcons
+                name="chevron-right"
+                size={20}
+                color={theme.colors.onSurfaceVariant}
+              />
+            </TouchableOpacity>
           </View>
 
           {/* Actions */}
@@ -374,9 +435,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   charCount: {
-    textAlign: 'right',
+    fontSize: 12,
     color: '#6B7280',
+  },
+  noteFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginTop: 4,
+  },
+  autoDetectMessage: {
+    fontSize: 12,
+    color: '#16A34A',
   },
   sheetActions: {
     flexDirection: 'row',

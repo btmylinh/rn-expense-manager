@@ -1,24 +1,44 @@
 // screens/setup/AfterRegisterSetupScreen.tsx
 import React, { useMemo, useState, useEffect } from 'react';
-import { View, ScrollView} from 'react-native';
+import { View, ScrollView, ActivityIndicator} from 'react-native';
 import { Button, TextInput, Text, Chip, RadioButton, ProgressBar, Snackbar, Portal, Dialog, IconButton } from 'react-native-paper';
 import CategoryCreateForm from '../../components/CategoryCreateForm';
 import { useAppTheme } from '../../theme';
-import { fakeApi } from '../../services/fakeApi';
+import { useAuth } from '../../contexts/AuthContext';
+import { userCategoryApi } from '../../api/userCategoryApi';
+import { walletApi } from '../../api/walletApi';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 export default function AfterRegisterSetupScreen({ route, navigation }: any) {
 	const theme = useAppTheme();
-	const userEmail: string = route.params?.email ?? 'demo@example.com';
-	const userId: number = route.params?.userId ?? 1;
+	const { user } = useAuth();
 	const [step, setStep] = useState(1);
 	const totalSteps = 3;
 	const progress = step / totalSteps;
 	const [snack, setSnack] = useState<string | null>(null);
+	const [checkingWallets, setCheckingWallets] = useState(true);
 
-	// Step 1: Wallet (collect only, defer API)
-	const [walletName, setWalletName] = useState('Ví chính');
-	const [walletAmount, setWalletAmount] = useState('0');
+  // Step 1: Wallet (collect only, defer API)
+  const [walletName, setWalletName] = useState('Ví chính');
+  const [walletAmount, setWalletAmount] = useState('0'); // hiển thị dạng "1.000.000"
+
+  // Helper: format number with thousand separators for VND
+  const formatCurrency = (value: string) => {
+    const numeric = value.replace(/\D/g, '');
+    if (!numeric) return '0';
+    const trimmed = numeric.replace(/^0+(?!$)/, '');
+    return trimmed.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  };
+
+  const parseCurrencyToNumber = (value: string) => {
+    const numeric = value.replace(/\D/g, '');
+    return numeric ? Number(numeric) : 0;
+  };
+
+  const handleWalletAmountChange = (value: string) => {
+    const formatted = formatCurrency(value);
+    setWalletAmount(formatted);
+  };
 
 	// Step 2: Currency (collect only, defer API)
 	const [currency, setCurrency] = useState<string>('VND');
@@ -50,19 +70,43 @@ export default function AfterRegisterSetupScreen({ route, navigation }: any) {
 	];
 	const [newIcon, setNewIcon] = useState<string>('tag-outline');
 
-	// Load categories on mount
+	// Check if user already has wallets on mount
 	useEffect(() => {
-		const loadCategories = async () => {
+		const checkWallets = async () => {
 			try {
-				const categories = await fakeApi.getCategories();
+				setCheckingWallets(true);
+				const response = await walletApi.getWallets();
+				const responseData = response.data;
+				const wallets = responseData?.data?.wallets || responseData?.wallets || [];
+				
+				// Nếu user đã có ví, navigate thẳng đến Tabs
+				if (wallets.length > 0) {
+					navigation.replace('Tabs', { initialTab: 'Thêm' });
+					return;
+				}
+				
+				// Nếu chưa có ví, load categories để hiển thị setup
+				const categoriesResponse = await userCategoryApi.getListCategory();
+				const categories = categoriesResponse.data?.data || categoriesResponse.data || [];
 				setSuggestionItems(categories);
+				if (categories.length > 0) {
 				setSelectedCategoryIds(categories.slice(0, 2).map((c: any) => c.id));
+				}
 			} catch (error) {
-				console.error('Failed to load categories:', error);
+				console.error('Failed to check wallets:', error);
+				// Nếu lỗi, vẫn hiển thị setup để user có thể tạo ví
+			} finally {
+				setCheckingWallets(false);
 			}
 		};
-		loadCategories();
-	}, []);
+		
+		if (user) {
+			checkWallets();
+		} else {
+			// Nếu chưa có user, quay lại login
+			navigation.replace('Login');
+		}
+	}, [user, navigation]);
 
 	const toggleCategoryId = (id: number) => {
 		setSelectedCategoryIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -102,28 +146,60 @@ export default function AfterRegisterSetupScreen({ route, navigation }: any) {
 		if (step === 3) {
 			try {
 				// 1) Create wallet
-				await fakeApi.createWallet(userId, (walletName || 'Ví').trim(), Number(walletAmount) || 0, currency);
+				await walletApi.createWallet({
+					name: (walletName || 'Ví').trim(),
+					amount: parseCurrencyToNumber(walletAmount),
+					currency: currency,
+					is_default: 1, // First wallet is default
+				});
+				
 				// 2) Add selected suggestion categories
+				const categoriesToCreate: Array<{ name: string; type: 1 | 2; icon: string }> = [];
 				for (const id of selectedCategoryIds) {
 					const cat = suggestionItems.find(c => c.id === id);
 					if (cat) {
-						await fakeApi.addCategory(userId, cat.name, cat.type, cat.icon ?? undefined);
+						categoriesToCreate.push({
+							name: cat.name,
+							type: (cat.type === 1 || cat.type === 2) ? cat.type : 1,
+							icon: cat.icon ?? 'tag-outline',
+						});
 					}
 				}
+				
 				// 3) Add custom categories collected during setup
 				for (const idx of selectedCustomIdx) {
 					const c = customCats[idx];
 					if (c) {
-						await fakeApi.addCategory(userId, c.name, c.type, c.icon);
+						categoriesToCreate.push({
+							name: c.name,
+							type: (c.type === 1 || c.type === 2) ? c.type : 1,
+							icon: c.icon,
+						});
 					}
 				}
+				
+				// Create all categories in batch
+				if (categoriesToCreate.length > 0) {
+					await userCategoryApi.createManyCategories(categoriesToCreate);
+				}
+				
 				setSnack('Thiết lập thành công!');
 				setTimeout(() => navigation.replace('Tabs', { initialTab: 'Thêm' }), 700);
 			} catch (error) {
+				console.error('Setup error:', error);
 				setSnack('Thiết lập thất bại, vui lòng thử lại');
 			}
 		}
 	};
+
+	if (checkingWallets) {
+		return (
+			<View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.background }}>
+				<ActivityIndicator size="large" color={theme.colors.primary} />
+				<Text style={{ marginTop: 16, color: theme.colors.onBackground }}>Đang kiểm tra...</Text>
+			</View>
+		);
+	}
 
 	return (
 		<View style={{ flex: 1, padding: theme.spacing(3), gap: theme.spacing(2) }}>
@@ -144,7 +220,13 @@ export default function AfterRegisterSetupScreen({ route, navigation }: any) {
 					</View>
 					<Text style={theme.semantic.typography.h3}>Tạo ví đầu tiên của bạn</Text>
 					<TextInput label="Tên ví" value={walletName} onChangeText={setWalletName} left={<TextInput.Icon icon="wallet" />} />
-					<TextInput label="Số dư ban đầu" value={walletAmount} onChangeText={setWalletAmount} keyboardType="number-pad" left={<TextInput.Icon icon="cash" />} />
+					<TextInput
+						label="Số dư ban đầu"
+						value={walletAmount}
+						onChangeText={handleWalletAmountChange}
+						keyboardType="number-pad"
+						left={<TextInput.Icon icon="cash" />}
+					/>
 				</View>
 			)}
 
@@ -263,3 +345,4 @@ export default function AfterRegisterSetupScreen({ route, navigation }: any) {
 		</View>
 	);
 }
+

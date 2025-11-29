@@ -13,7 +13,10 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { useAppTheme, getIconColor } from '../../theme';
 import { formatCurrency } from '../../utils/format';
-import { fakeApi } from '../../services/fakeApi';
+import { budgetApi } from '../../api/budgetApi';
+import { userCategoryApi } from '../../api/userCategoryApi';
+import { walletApi } from '../../api/walletApi';
+import { transactionApi } from '../../api/transactionApi';
 import AppBar from '../../components/AppBar';
 
 type RootStackParamList = {
@@ -30,8 +33,6 @@ export default function BudgetHistoryScreen() {
   const [historyData, setHistoryData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
-  const userId = 1;
-
   useEffect(() => {
     loadHistoryData();
   }, []);
@@ -41,24 +42,69 @@ export default function BudgetHistoryScreen() {
       setLoading(true);
       
       // Load all budgets and filter expired ones
-      const [budgets, categories, wallets] = await Promise.all([
-        fakeApi.getBudgets(userId),
-        fakeApi.getUserCategories(userId),
-        fakeApi.getWallets(userId),
+      const [budgetResponse, categoryResponse, walletResponse] = await Promise.all([
+        budgetApi.getBudgets({ limit: 1000 }),
+        userCategoryApi.getUserCategories(),
+        walletApi.getWallets(),
       ]);
+
+      const budgets = budgetResponse.data?.data?.budgets || [];
+      const categories = categoryResponse.data?.data || [];
+      const wallets = walletResponse.data?.wallets || [];
 
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      // Filter expired budgets (end_date < today)
-      const expiredBudgets = budgets.filter((budget: any) => {
-        const endDate = new Date(budget.endDate);
+      // Filter expired budgets (end_date < today) and map fields
+      const expiredBudgets = budgets.filter((b: any) => {
+        const endDate = new Date(b.end_date);
         endDate.setHours(0, 0, 0, 0);
         return endDate < today;
       });
 
+      // Calculate spent for each budget from transactions
+      const budgetsWithSpent = await Promise.all(
+        expiredBudgets.map(async (b: any) => {
+          try {
+            const transactionsResponse = await transactionApi.getTransactions({
+              wallet_id: b.wallet_id,
+              user_category_id: b.user_category_id,
+              type: 2, // Only expenses
+              start_date: b.start_date,
+              end_date: b.end_date,
+              limit: 1000,
+            });
+            const transactions = transactionsResponse.data?.data?.transactions || [];
+            const spent = transactions.reduce((sum: number, tx: any) => sum + Number(tx.amount), 0);
+            
+            return {
+              ...b,
+              startDate: b.start_date,
+              endDate: b.end_date,
+              userCategoryId: b.user_category_id,
+              walletId: b.wallet_id,
+              amount: Number(b.amount),
+              isRepeat: b.is_repeat,
+              spent,
+            };
+          } catch (error) {
+            console.error(`Failed to load transactions for budget ${b.id}:`, error);
+            return {
+              ...b,
+              startDate: b.start_date,
+              endDate: b.end_date,
+              userCategoryId: b.user_category_id,
+              walletId: b.wallet_id,
+              amount: Number(b.amount),
+              isRepeat: b.is_repeat,
+              spent: 0,
+            };
+          }
+        })
+      );
+
       // Group by time period and add category/wallet info
-      const groupedData = groupBudgetsByPeriod(expiredBudgets, categories, wallets);
+      const groupedData = groupBudgetsByPeriod(budgetsWithSpent, categories, wallets);
       setHistoryData(groupedData);
     } catch (error) {
       console.error('Error loading history data:', error);

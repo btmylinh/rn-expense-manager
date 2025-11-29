@@ -3,12 +3,9 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { View, ActivityIndicator } from 'react-native';
-import { Text } from 'react-native-paper';
 import Tabs from './Tabs';
 import AuthNavigator from './AuthNavigator';
 import { useAuth } from '../contexts/AuthContext';
-import { useAppTheme } from '../theme';
 import BudgetCreateScreen from '../screens/budgets/BudgetCreateScreen';
 import BudgetDetailScreen from '../screens/budgets/BudgetDetailScreen';
 import BudgetHistoryScreen from '../screens/budgets/BudgetHistoryScreen';
@@ -23,9 +20,11 @@ import SavingsGoalsScreen from '../screens/savings/SavingsGoalsScreen';
 import ChatbotScreen from '../screens/tools/ChatbotScreen';
 import RecurringExpensesScreen from '../screens/recurring/RecurringExpensesScreen';
 import ReportExportScreen from '../screens/reports/ReportExportScreen';
+import AfterRegisterSetupScreen from '../screens/setup/AfterRegisterSetupScreen';
 
 export type RootStackParamList = {
 	Auth: undefined;
+	Setup: undefined;
 	Tabs: { initialTab?: string } | undefined;
 	Tools: undefined;
 	Budgets: undefined;
@@ -60,25 +59,15 @@ export type RootStackParamList = {
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function RootNavigator() {
-	const { user, isLoading } = useAuth();
-	const theme = useAppTheme();
-
-	if (isLoading) {
-		return (
-			<SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: theme.colors.background }}>
-				<ActivityIndicator size="large" color={theme.colors.primary} />
-				<Text style={{ marginTop: 16, color: theme.colors.onBackground }}>Đang tải...</Text>
-			</SafeAreaView>
-		);
-	}
+	const { user } = useAuth();
 
 	return (
 		<NavigationContainer>
 			<SafeAreaView style={{ flex: 1 }} edges={["top"]}>
 				<Stack.Navigator screenOptions={{ headerShown: false }}>
 					{user ? (
-						// User đã đăng nhập
 						<>
+					<Stack.Screen name="Setup" component={AfterRegisterSetupScreen} />
 					<Stack.Screen name="Tabs" component={Tabs} />
 					<Stack.Screen name="Budgets" component={BudgetsScreen} />
 					<Stack.Screen name="SavingsGoals" component={SavingsGoalsScreen} />
@@ -96,7 +85,6 @@ export default function RootNavigator() {
 						<Stack.Screen name="Chatbot" component={ChatbotScreen} />
 						</>
 					) : (
-						// User chưa đăng nhập
 						<Stack.Screen name="Auth" component={AuthNavigator} />
 					)}
 				</Stack.Navigator>

@@ -28,7 +28,6 @@ import {
 } from 'react-native-paper';
 import { useTheme } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { fakeApi } from '../../services/fakeApi';
 import { useAuth } from '../../contexts/AuthContext';
 import { useFocusEffect } from '@react-navigation/native';
 import { DatePickerModal } from 'react-native-paper-dates';
@@ -39,7 +38,15 @@ import AIProcessingModal from '../../components/AIProcessingModal';
 import VoiceGuideModal from '../../components/VoiceGuideModal';
 import VoiceRecordingModal from '../../components/VoiceRecordingModal';
 import OCRGuideModal from '../../components/OCRGuideModal';
+import WalletSelectModal from '../../components/WalletSelectModal';
 import { getIconColor, useAppTheme } from '../../theme';
+import { useMetadata } from '../../contexts/MetadataContext';
+import { transactionApi } from '../../api/transactionApi';
+import { walletApi } from '../../api/walletApi';
+import { getErrorMessage } from '../../utils/errorHandler';
+import { triggerStreakActivity } from '../../utils/streakHelpers';
+import { useNotifications } from '../../contexts/NotificationContext';
+import { aiApi } from '../../api/aiApi';
 import * as ImagePicker from 'expo-image-picker';
 
 
@@ -59,35 +66,41 @@ interface Transaction {
 
 interface Wallet {
   id: number;
-  userId: number;
+  userId?: number;
   name: string;
-  amount: number;
-  currency: string;
+  amount?: number;
+  currency?: string;
   color?: string;
+  is_default?: number | boolean;
+  [key: string]: any;
 }
 
 interface Category {
   id: number;
   userId?: number;
   name: string;
-  type: number; // 1 income, 2 expense
+  type?: number; // 1 income, 2 expense
   icon?: string;
   color?: string;
 }
+
+const AI_PARSING_AVAILABLE = false;
 
 export default function AddTransactionScreen() {
   const theme = useTheme();
   const appTheme = useAppTheme();
   const [userName, setUserName] = useState<string>('');
   const [transactionGroups, setTransactionGroups] = useState<Array<{ date: string; transactions: any[] }>>([]);
-  const [wallets, setWallets] = useState<Wallet[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
   const [selectedWallet, setSelectedWallet] = useState<Wallet | null>(null);
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [balanceVisible, setBalanceVisible] = useState(true);
   const [quickInput, setQuickInput] = useState('');
   const [quickFocused, setQuickFocused] = useState(false);
   const quickInputRef = useRef<TextInput>(null);
+  const transactionsCacheRef = useRef<any[]>([]);
+  const scrollViewRef = useRef<ScrollView>(null);
+  // Track thời gian tạo giao dịch mới (để hiển thị badge)
+  const [newTransactionTime, setNewTransactionTime] = useState<number>(Date.now());
 
   // actions state
   const [actionTx, setActionTx] = useState<Transaction | null>(null);
@@ -95,7 +108,6 @@ export default function AddTransactionScreen() {
   const [showEditSheet, setShowEditSheet] = useState(false);
   const [showAddSheet, setShowAddSheet] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [userStreak, setUserStreak] = useState(0);
 
   // detected transactions modal state
   const [showDetectedModal, setShowDetectedModal] = useState(false);
@@ -113,81 +125,300 @@ export default function AddTransactionScreen() {
   const [isProcessingImage, setIsProcessingImage] = useState(false);
 
   const { user } = useAuth();
-  const userId = user?.id || 1;
+  const userId = user?.id;
+  const { refreshNotifications } = useNotifications();
+  const { wallets, categories, ensureWallets, ensureCategories, refreshWallets, refreshCategories, defaultWallet } = useMetadata();
+  const modalCategories = React.useMemo(
+    () =>
+      categories.map(cat => ({
+        id: cat.id,
+        name: cat.name,
+        icon: cat.icon,
+        type: cat.type ?? 2,
+      })),
+    [categories]
+  );
+
+  const resolveCategory = useCallback(
+    (categoryId: number) => {
+      return (
+        categories.find(c => c.id === categoryId) || {
+          id: categoryId,
+          name: 'Chưa phân loại',
+          icon: 'tag-outline',
+          type: 2,
+        }
+      );
+    },
+    [categories]
+  );
+
+  const groupTransactionsByDateRef = useRef<((transactions: any[]) => void) | undefined>(undefined);
+
+  const groupTransactionsByDate = useCallback(
+    (transactions: any[]) => {
+      transactionsCacheRef.current = transactions;
+      const groups = new Map<
+        string,
+        { label: string; total: number; items: Array<Record<string, any>> }
+      >();
+
+      transactions.forEach(rawTx => {
+        const createdAtValue =
+          rawTx.created_at ??
+          rawTx.createdAt ??
+          rawTx.transaction_date ??
+          rawTx.transactionDate;
+        const date = createdAtValue ? new Date(createdAtValue) : new Date();
+        if (Number.isNaN(date.getTime())) {
+          return;
+        }
+        const isoDate = date.toISOString().split('T')[0];
+        const label = date.toLocaleDateString('vi-VN', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+        });
+
+        const normalized = {
+          id: rawTx.id,
+          userId: rawTx.user_id ?? rawTx.userId,
+          walletId: rawTx.wallet_id ?? rawTx.walletId,
+          userCategoryId: rawTx.user_category_id ?? rawTx.userCategoryId,
+          amount: Number(rawTx.amount),
+          note: rawTx.note,
+          content: rawTx.content,
+          transactionDate: rawTx.transaction_date ?? rawTx.transactionDate,
+          type: rawTx.type,
+          createdAt: createdAtValue ?? new Date().toISOString(),
+          category: resolveCategory(rawTx.user_category_id ?? rawTx.userCategoryId),
+        };
+
+        const entry = groups.get(isoDate) || { label, total: 0, items: [] };
+        entry.items.push(normalized);
+        entry.total += normalized.type === 1 ? normalized.amount : -normalized.amount;
+        groups.set(isoDate, entry);
+      });
+
+      const formatted = Array.from(groups.entries())
+        .sort((a, b) => (a[0] > b[0] ? 1 : -1)) // Mới nhất ở cuối (như tin nhắn)
+        .map(([, value]) => ({
+          date: value.label,
+          total: value.total,
+          transactions: value.items.sort((a, b) => {
+            // Sắp xếp trong mỗi ngày: mới nhất ở cuối
+            const timeA = new Date(a.createdAt).getTime();
+            const timeB = new Date(b.createdAt).getTime();
+            return timeA > timeB ? 1 : -1;
+          }),
+        }));
+
+      setTransactionGroups(formatted);
+    },
+    [resolveCategory]
+  );
+  
+  // Cập nhật ref mỗi khi function thay đổi
+  useEffect(() => {
+    groupTransactionsByDateRef.current = groupTransactionsByDate;
+  }, [groupTransactionsByDate]);
 
   useEffect(() => {
-    let mounted = true;
-    (async () => {
+    if (!transactionGroups.length) return;
+    requestAnimationFrame(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: false });
+    });
+  }, [transactionGroups]);
+
+  const [loadingWalletOverview, setLoadingWalletOverview] = useState(false);
+  const [walletOverviewError, setWalletOverviewError] = useState<string | null>(null);
+  const loadingRef = useRef(false);
+
+  const loadWalletOverview = useCallback(
+    async (walletId: number) => {
+      // Tránh gọi API nếu đang loading
+      if (loadingRef.current) {
+        return;
+      }
+      
       try {
-        const [w, c, prefs, stats] = await Promise.all([
-          fakeApi.getWallets(userId),
-          fakeApi.getUserCategories(userId),
-          fakeApi.getUserPreferences(userId),
-          fakeApi.getTransactionStats(userId),
+        loadingRef.current = true;
+        setLoadingWalletOverview(true);
+        setWalletOverviewError(null);
+        
+        const [walletResponse, transactionsResponse] = await Promise.all([
+          walletApi.getWalletById(walletId),
+          transactionApi.getTransactions({
+            wallet_id: walletId,
+            limit: 200,
+            sortBy: 'created_at',
+            sortOrder: 'DESC',
+          }),
         ]);
-        if (!mounted) return;
-        
-        setWallets(w as any);
-        setCategories(c as any);
-        
-        if (prefs.success) {
-          const currentId = prefs.data.currentWalletId;
-        const defaultSelection = (w as any).find((x: any) => x.id === currentId) || (w as any)[0] || null;
-        setSelectedWallet(defaultSelection);
-          if (prefs.data.user) setUserName(prefs.data.user.name || 'Người dùng');
+
+        const walletData = walletResponse.data?.wallet || walletResponse.data?.data?.wallet;
+        if (walletData) {
+          setSelectedWallet(prev => (prev ? { ...prev, amount: walletData.amount, currency: walletData.currency } : walletData));
         }
-        
-        if (stats.success && stats.data.streak) {
-          setUserStreak(stats.data.streak.streak || 0);
+
+        const txs =
+          transactionsResponse.data?.data?.transactions ||
+          transactionsResponse.data?.transactions ||
+          [];
+        const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+        const recentTxs = txs
+          .map((tx: any) => ({
+            ...tx,
+            __createdAt:
+              tx.created_at ??
+              tx.createdAt ??
+              tx.transaction_date ??
+              tx.transactionDate,
+          }))
+          .filter((tx: any) => {
+            if (!tx.__createdAt) return true;
+            const time = new Date(tx.__createdAt).getTime();
+            if (Number.isNaN(time)) return true;
+            return time >= oneWeekAgo;
+          })
+          .sort((a: any, b: any) => {
+            const timeA = new Date(a.__createdAt ?? a.created_at ?? a.createdAt ?? a.transaction_date).getTime();
+            const timeB = new Date(b.__createdAt ?? b.created_at ?? b.createdAt ?? b.transaction_date).getTime();
+            return timeA - timeB;
+          })
+          .map(({ __createdAt, ...rest }: any) => rest);
+        // Sử dụng ref để tránh dependency loop
+        if (groupTransactionsByDateRef.current) {
+          groupTransactionsByDateRef.current(recentTxs);
         }
-      } catch { }
-    })();
-    return () => { mounted = false; };
+      } catch (error) {
+        console.error('Failed to load wallet overview', error);
+        setWalletOverviewError('Không thể tải giao dịch');
+        // Không retry tự động khi lỗi
+      } finally {
+        loadingRef.current = false;
+        setLoadingWalletOverview(false);
+        }
+    },
+    [] // Không có dependency để tránh re-create function
+  );
+
+  useEffect(() => {
+    if (transactionsCacheRef.current.length > 0) {
+      groupTransactionsByDate(transactionsCacheRef.current);
+    }
+  }, [groupTransactionsByDate]);
+
+  const refreshAfterMutation = useCallback(
+    async (walletId?: number | null) => {
+      if (walletId) {
+        await loadWalletOverview(walletId);
+      }
+      refreshWallets().catch(() => undefined);
+      refreshNotifications().catch(() => undefined);
+    },
+    [loadWalletOverview, refreshNotifications, refreshWallets]
+  );
+
+  const recordTransactionActivity = useCallback(async () => {
+    await triggerStreakActivity('transaction');
   }, []);
 
-  // Refresh wallets and categories whenever returning to this screen
+
+  useEffect(() => {
+    if (!wallets.length) {
+      setSelectedWallet(null);
+      return;
+    }
+    setSelectedWallet(prev => {
+      if (prev) {
+        const updated = wallets.find(w => w.id === prev.id);
+        if (updated) {
+          return { ...prev, ...updated };
+        }
+      }
+      const fallback = defaultWallet ?? wallets[0];
+      return fallback ? { ...fallback } : null;
+    });
+  }, [wallets, defaultWallet]);
+
+  // Chỉ load một lần khi mount, không depend vào ensureWallets/ensureCategories
+  const hasLoadedRef = useRef(false);
+  useEffect(() => {
+    if (!hasLoadedRef.current) {
+      hasLoadedRef.current = true;
+      ensureWallets().catch(() => undefined);
+      ensureCategories().catch(() => undefined);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Chỉ chạy một lần khi mount
+
+  useEffect(() => {
+    if (user?.name) {
+      setUserName(user.name);
+    } else if (user?.email) {
+      setUserName(user.email.split('@')[0]);
+    } else {
+      setUserName('Người dùng');
+    }
+  }, [user]);
+
+  // Refresh wallets and categories whenever returning to this screen (chỉ refresh khi cần)
+  const lastRefreshRef = useRef<number>(0);
+  const REFRESH_INTERVAL = 5000; // 5 giây
+  
   useFocusEffect(
     useCallback(() => {
       let active = true;
+      const now = Date.now();
+      // Chỉ refresh nếu đã qua 5 giây kể từ lần refresh cuối
+      if (now - lastRefreshRef.current < REFRESH_INTERVAL) {
+        return;
+      }
+      
       (async () => {
         try {
-          const [w, cw, c] = await Promise.all([
-            fakeApi.getWallets(userId),
-            fakeApi.getCurrentWalletId(userId),
-            fakeApi.getUserCategories(userId),
-          ]);
+          lastRefreshRef.current = now;
+          const [walletList] = await Promise.all([refreshWallets(), refreshCategories()]);
           if (!active) return;
-          setWallets(w as any);
-          setCategories(c as any);
-          const currentId = (cw as any)?.walletId;
-          const selected = (w as any).find((x: any) => x.id === currentId) || (w as any)[0] || null;
-          setSelectedWallet(selected);
-        } catch { }
+          const list = Array.isArray(walletList) ? walletList : [];
+          setSelectedWallet(prev => {
+            if (prev) {
+              const updated = list.find((w: any) => w.id === prev.id);
+              if (updated) {
+                return { ...prev, ...updated };
+              }
+            }
+            const fallback =
+              list.find((w: any) => w.isDefault || w.is_default === 1) ||
+              list[0] ||
+              defaultWallet ||
+              null;
+            return fallback ? { ...fallback } : null;
+          });
+        } catch (error) {
+          console.error('Failed to refresh wallets/categories', error);
+        }
       })();
-      return () => { active = false; };
-    }, [])
+      return () => {
+        active = false;
+      };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []) // Không depend vào refreshWallets/refreshCategories để tránh loop
   );
 
   // Load wallet dashboard when selected wallet changes
   useEffect(() => {
-    if (!selectedWallet) return;
-
-    let mounted = true;
-    (async () => {
-      try {
-        const dashboard = await fakeApi.getWalletDashboard(userId, selectedWallet.id);
-        if (!mounted) return;
-        
-        if (dashboard.success && dashboard.data) {
-          // Update wallet info with current balance (API provides)
-          setSelectedWallet(prev => prev ? { ...prev, amount: dashboard.data.wallet.balance } : null);
-          // Set transaction groups (API calculates and groups by date)
-          setTransactionGroups(dashboard.data.transactionGroups || []);
-        }
-      } catch { }
-    })();
-    return () => { mounted = false; };
-  }, [selectedWallet?.id]); // Only depend on wallet ID to avoid infinite loops
+    if (!selectedWallet?.id) {
+      setTransactionGroups([]);
+      return;
+    }
+    // Reset error khi wallet thay đổi
+    setWalletOverviewError(null);
+    // Load wallet overview
+    loadWalletOverview(selectedWallet.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedWallet?.id]); // Chỉ depend vào selectedWallet.id để tránh loop
 
   // Current balance from API (no calculation needed)
   const currentBalance = selectedWallet?.amount ?? 0;
@@ -251,27 +482,26 @@ export default function AddTransactionScreen() {
     setShowWalletModal(false);
   };
 
-  const handleQuickInput = async () => {
-    if (quickInput.trim()) {
-      try {
-        setIsParsingText(true);
-        // Call AI API to parse text to transactions
-        const parseResult = await fakeApi.parseTextToTransactions(userId, quickInput);
-        
-        if (parseResult.success && parseResult.transactions.length > 0) {
-          // Show modal with detected transactions
-          setDetectedTransactions(parseResult.transactions);
-          setShowDetectedModal(true);
-          setQuickInput('');
-        } else {
-          Alert.alert('Không phát hiện', 'Không thể phát hiện giao dịch từ tin nhắn của bạn.');
-        }
-      } catch (error) {
-        Alert.alert('Lỗi', 'Có lỗi xảy ra khi xử lý tin nhắn');
-      } finally {
-        setIsParsingText(false);
-      }
+  const handleWalletSelectById = (walletId: number | null) => {
+    if (walletId == null) return;
+    const wallet = wallets.find(w => w.id === walletId);
+    if (wallet) {
+      handleWalletSelect(wallet);
+    } else {
+      setShowWalletModal(false);
     }
+  };
+
+  const handleQuickInput = async () => {
+    if (!quickInput.trim()) return;
+    if (!selectedWallet?.id) {
+      Alert.alert('Thông báo', 'Vui lòng chọn ví trước');
+      return;
+    }
+    
+    const text = quickInput.trim();
+          setQuickInput('');
+    await processTextToTransactions(text);
   };
 
   const handleOCR = () => {
@@ -312,45 +542,30 @@ export default function AddTransactionScreen() {
     setIsLoading(true);
 
     try {
-      const result = await fakeApi.addTransaction(
-        userId,
-        selectedWallet.id,
-        data.userCategoryId,
-        data.amount,
-        data.content,
-        data.type,
-        data.transactionDate
-      );
+      await transactionApi.createTransaction({
+        wallet_id: selectedWallet.id,
+        user_category_id: data.userCategoryId,
+        amount: Math.abs(data.amount),
+        type: data.type as 1 | 2,
+        transaction_date: data.transactionDate,
+        content: data.content,
+      });
 
-      if (result.success) {
-        // Reload data from API (API calculates everything)
-        const dashboard = await fakeApi.getWalletDashboard(userId, selectedWallet.id);
-        if (dashboard.success && dashboard.data) {
-          setSelectedWallet(prev => prev ? { ...prev, amount: dashboard.data.wallet.balance } : null);
-          setTransactionGroups(dashboard.data.transactionGroups || []);
-        }
+      await refreshAfterMutation(selectedWallet.id);
+      await recordTransactionActivity();
 
-        // Trigger notification checks and record streak activity
-        try {
-          await Promise.all([
-            fakeApi.checkBudgetAlerts(userId),
-            fakeApi.checkLargeTransactionAlerts(userId),
-            fakeApi.recordStreakActivity(userId, 'transaction')
-          ]);
-        } catch (error) {
-          // Silently fail - not critical
-        }
+      // Đánh dấu thời gian tạo giao dịch mới (để hiển thị badge)
+      setNewTransactionTime(Date.now());
 
         setShowAddSheet(false);
         Alert.alert('Thành công', 'Đã thêm giao dịch mới');
-      }
-    } catch (error) {
-      Alert.alert('Lỗi', 'Có lỗi xảy ra khi thêm giao dịch');
+    } catch (error: any) {
+      Alert.alert('Lỗi', getErrorMessage(error, 'Có lỗi xảy ra khi thêm giao dịch'));
       throw error;
     } finally {
       setIsLoading(false);
     }
-  }, [selectedWallet]);
+  }, [recordTransactionActivity, refreshAfterMutation, selectedWallet]);
 
   const handleSaveEdit = useCallback(async (data: {
     amount: number;
@@ -363,26 +578,27 @@ export default function AddTransactionScreen() {
     setIsLoading(true);
 
     try {
-      const result = await fakeApi.updateTransaction(userId, actionTx.id, data);
+      await transactionApi.updateTransaction(actionTx.id, {
+        user_category_id: data.userCategoryId,
+        amount: Math.abs(data.amount),
+        type: data.type as 1 | 2,
+        transaction_date: data.transactionDate,
+        content: data.content,
+        wallet_id: selectedWallet.id,
+      });
 
-      if (result.success) {
-        // Reload data from API (API calculates everything)
-        const dashboard = await fakeApi.getWalletDashboard(userId, selectedWallet.id);
-        if (dashboard.success && dashboard.data) {
-          setSelectedWallet(prev => prev ? { ...prev, amount: dashboard.data.wallet.balance } : null);
-          setTransactionGroups(dashboard.data.transactionGroups || []);
-        }
+      await refreshAfterMutation(selectedWallet.id);
+      await recordTransactionActivity();
 
         setShowEditSheet(false);
         setActionTx(null);
-      }
-    } catch (error) {
-      Alert.alert('Lỗi', 'Có lỗi xảy ra khi cập nhật giao dịch');
+    } catch (error: any) {
+      Alert.alert('Lỗi', getErrorMessage(error, 'Có lỗi xảy ra khi cập nhật giao dịch'));
       throw error;
     } finally {
       setIsLoading(false);
     }
-  }, [actionTx, selectedWallet]);
+  }, [actionTx, recordTransactionActivity, refreshAfterMutation, selectedWallet]);
 
   const confirmDelete = () => {
     setShowActionsSheet(false);
@@ -392,19 +608,11 @@ export default function AddTransactionScreen() {
       {
         text: 'Xoá', style: 'destructive', onPress: async () => {
           try {
-            const result = await fakeApi.deleteTransaction(userId, actionTx.id);
-            if (result.success) {
-              // Reload data from API (API calculates everything)
-              const dashboard = await fakeApi.getWalletDashboard(userId, selectedWallet.id);
-              if (dashboard.success && dashboard.data) {
-                setSelectedWallet(prev => prev ? { ...prev, amount: dashboard.data.wallet.balance } : null);
-                setTransactionGroups(dashboard.data.transactionGroups || []);
-              }
-
+            await transactionApi.deleteTransaction(actionTx.id);
+            await refreshAfterMutation(selectedWallet.id);
               setActionTx(null);
-            }
-          } catch (error) {
-            Alert.alert('Lỗi', 'Có lỗi xảy ra khi xóa giao dịch');
+          } catch (error: any) {
+            Alert.alert('Lỗi', getErrorMessage(error, 'Có lỗi xảy ra khi xóa giao dịch'));
           }
         }
       }
@@ -435,11 +643,12 @@ export default function AddTransactionScreen() {
   };
 
   const handleEditDetected = (transaction: any) => {
+    if (!userId) return;
     // Convert to TransactionModal format and open edit sheet
     setActionTx({
       id: transaction.id as number,
       userId,
-      walletId: selectedWallet?.id || 1,
+      walletId: selectedWallet?.id ?? 0,
       userCategoryId: transaction.categoryId,
       amount: transaction.amount,
       transactionDate: transaction.date,
@@ -458,37 +667,24 @@ export default function AddTransactionScreen() {
       setIsLoading(true);
       
       // Create all transactions
-      const createPromises = detectedTransactions.map(tx =>
-        fakeApi.addTransaction(
-          userId,
-          selectedWallet.id,
-          tx.categoryId,
-          Math.abs(tx.amount),
-          tx.description,
-          tx.type,
-          tx.date
+      const results = await Promise.all(
+        detectedTransactions.map(tx =>
+          transactionApi.createTransaction({
+            wallet_id: selectedWallet.id,
+            user_category_id: tx.categoryId,
+            amount: Math.abs(tx.amount),
+            type: tx.type as 1 | 2,
+            transaction_date: tx.date,
+            content: tx.description,
+          })
         )
       );
 
-      await Promise.all(createPromises);
+      await refreshAfterMutation(selectedWallet.id);
+      await recordTransactionActivity();
 
-      // Reload data from API
-      const dashboard = await fakeApi.getWalletDashboard(userId, selectedWallet.id);
-      if (dashboard.success && dashboard.data) {
-        setSelectedWallet(prev => prev ? { ...prev, amount: dashboard.data.wallet.balance } : null);
-        setTransactionGroups(dashboard.data.transactionGroups || []);
-      }
-
-      // Trigger notification checks and record streak activity
-      try {
-        await Promise.all([
-          fakeApi.checkBudgetAlerts(userId),
-          fakeApi.checkLargeTransactionAlerts(userId),
-          fakeApi.recordStreakActivity(userId, 'transaction')
-        ]);
-      } catch (error) {
-        console.log('Failed to check notifications or record streak:', error);
-      }
+      // Đánh dấu thời gian tạo giao dịch mới (để hiển thị badge)
+      setNewTransactionTime(Date.now());
 
       Alert.alert('Thành công', `Đã lưu ${detectedTransactions.length} giao dịch`);
       setShowDetectedModal(false);
@@ -506,23 +702,54 @@ export default function AddTransactionScreen() {
     setShowVoiceRecordingModal(true);
   };
 
-  const handleSendVoice = async () => {
-    setShowVoiceRecordingModal(false);
-    setIsProcessingVoice(true);
+  const handleSendVoice = async (audioUri: string) => {
+    if (!selectedWallet?.id) {
+      Alert.alert('Thông báo', 'Vui lòng chọn ví trước');
+      setShowVoiceRecordingModal(false);
+      return;
+    }
 
     try {
-      // Call fake API to process voice
-      const parseResult = await fakeApi.parseVoiceToTransactions(userId);
+      setIsProcessingVoice(true);
+      setShowVoiceRecordingModal(false);
+
+      // Lấy thời gian hiện tại để thêm vào text (giúp AI nhận diện thời gian chính xác)
+      const now = new Date();
+      const currentTime = now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+      const currentDate = now.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+      // Step 1: Convert audio to text
+      const speechResponse = await aiApi.speechToText(audioUri, 'vi');
+      const speechData = speechResponse.data;
       
-      if (parseResult.success && parseResult.transactions.length > 0) {
-        // Show modal with detected transactions
-        setDetectedTransactions(parseResult.transactions);
-        setShowDetectedModal(true);
-      } else {
-        Alert.alert('Không phát hiện', 'Không thể phát hiện giao dịch từ giọng nói của bạn.');
+      // Check if response has error code
+      if (speechData.code !== 'SUCCESS') {
+        Alert.alert('Lỗi', speechData.message || 'Không thể nhận diện giọng nói. Vui lòng thử lại.');
+        return;
       }
+      
+      let text = speechData?.data?.text;
+
+      if (!text || !text.trim()) {
+        Alert.alert('Lỗi', 'Không thể nhận diện giọng nói. Vui lòng thử lại.');
+        return;
+      }
+
+      // Thêm thông tin thời gian vào text nếu chưa có
+      // Giúp AI nhận diện thời gian chính xác hơn
+      if (!text.includes('hôm nay') && !text.includes('hôm qua') && !text.match(/\d{1,2}\/\d{1,2}/)) {
+        text = `${text.trim()} (Thời gian: ${currentTime}, Ngày: ${currentDate})`;
+      }
+
+      // Step 2: Parse text to transactions using AI
+      await processTextToTransactions(text.trim());
     } catch (error) {
-      Alert.alert('Lỗi', 'Có lỗi xảy ra khi xử lý giọng nói');
+      console.error('Failed to process voice:', error);
+      Alert.alert(
+        'Lỗi',
+        getErrorMessage(error, 'Không thể xử lý giọng nói. Vui lòng thử lại.'),
+        [{ text: 'OK' }]
+      );
     } finally {
       setIsProcessingVoice(false);
     }
@@ -530,88 +757,165 @@ export default function AddTransactionScreen() {
 
   // OCR handlers
   const handleCaptureImage = async () => {
-    setShowOCRGuideModal(false);
     try {
-      // Request camera permissions
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert('Cần quyền truy cập', 'Ứng dụng cần quyền truy cập camera để chụp ảnh.');
         return;
       }
 
-      // Launch camera
       const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ['images'],
-        aspect: [4, 3],
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
         quality: 0.8,
       });
 
-      if (!result.canceled && result.assets && result.assets[0]) {
-        // Send image directly for processing
+      if (!result.canceled && result.assets[0]) {
         await handleSendImage(result.assets[0].uri);
       }
     } catch (error) {
-      Alert.alert('Lỗi', 'Không thể mở camera. Vui lòng thử lại.');
-      console.error('Camera error:', error);
+      console.error('Failed to capture image:', error);
+      Alert.alert('Lỗi', 'Không thể chụp ảnh. Vui lòng thử lại.');
     }
   };
 
   const handlePickFromLibrary = async () => {
-    setShowOCRGuideModal(false);
     try {
-      // Request media library permissions
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Cần quyền truy cập', 'Ứng dụng cần quyền truy cập thư viện ảnh để chọn ảnh.');
+        Alert.alert('Cần quyền truy cập', 'Ứng dụng cần quyền truy cập thư viện ảnh.');
         return;
       }
 
-      // Launch image library
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        aspect: [4, 3],
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
         quality: 0.8,
       });
 
-      if (!result.canceled && result.assets && result.assets[0]) {
-        // Send image directly for processing
+      if (!result.canceled && result.assets[0]) {
         await handleSendImage(result.assets[0].uri);
       }
     } catch (error) {
-      Alert.alert('Lỗi', 'Không thể mở thư viện ảnh. Vui lòng thử lại.');
-      console.error('Image library error:', error);
+      console.error('Failed to pick image:', error);
+      Alert.alert('Lỗi', 'Không thể chọn ảnh. Vui lòng thử lại.');
     }
   };
 
   const handleSendImage = async (imageUri: string) => {
-    if (!imageUri) return;
-    
-    // Set image for preview in AIProcessingModal
-    setSelectedImage(imageUri);
-    // Show processing modal with image preview
-    setIsProcessingImage(true);
+    if (!selectedWallet?.id) {
+      Alert.alert('Thông báo', 'Vui lòng chọn ví trước');
+      setShowOCRGuideModal(false);
+      return;
+    }
 
     try {
-      // Call fake API to process image (simulates 3-5 seconds delay)
-      const parseResult = await fakeApi.parseImageToTransactions(userId, imageUri);
+      setIsProcessingImage(true);
+      setShowOCRGuideModal(false);
+
+      // Step 1: Extract text from image using OCR
+      const ocrResponse = await aiApi.imageToText(imageUri, ['vi', 'en']);
+      const ocrData = ocrResponse.data;
       
-      // Close processing modal
+      // Check if response has error code
+      if (ocrData.code !== 'SUCCESS') {
+        Alert.alert('Lỗi', ocrData.message || 'Không thể trích xuất văn bản từ hình ảnh. Vui lòng thử lại.');
+        return;
+      }
+      
+      const text = ocrData?.data?.text;
+
+      if (!text || !text.trim()) {
+        Alert.alert('Lỗi', 'Không tìm thấy văn bản trong hình ảnh. Vui lòng thử lại với ảnh rõ hơn.');
+        return;
+      }
+
+      // Step 2: Parse text to transactions using AI
+      await processTextToTransactions(text.trim());
+    } catch (error) {
+      console.error('Failed to process image:', error);
+      Alert.alert(
+        'Lỗi',
+        getErrorMessage(error, 'Không thể xử lý hình ảnh. Vui lòng thử lại.'),
+        [{ text: 'OK' }]
+      );
+    } finally {
       setIsProcessingImage(false);
+    }
+  };
+
+  // Helper function to process text to transactions (reused by voice and OCR)
+  const processTextToTransactions = async (text: string) => {
+    try {
+      setIsParsingText(true);
+
+      // Log text trước khi gửi vào AI parsing
+      console.log('[AddTransactionScreen] Text gửi vào AI parsing:');
+      console.log('─────────────────────────────────────────');
+      console.log(text);
+      console.log('─────────────────────────────────────────');
+
+      // Gọi AI để parse text thành transactions
+      const response = await aiApi.parseTextToTransactions(text);
+      const responseData = response.data;
       
-      if (parseResult.success && parseResult.transactions.length > 0) {
-        // Show modal with detected transactions
-        setDetectedTransactions(parseResult.transactions);
-        setShowDetectedModal(true);
-        // Clear image after showing results
-        setSelectedImage(null);
-      } else {
-        Alert.alert('Không phát hiện', 'Không thể phát hiện giao dịch từ ảnh của bạn.');
-        setSelectedImage(null);
+      // Check if response has error code
+      if (responseData.code !== 'SUCCESS') {
+        Alert.alert('Lỗi', responseData.message || 'Không thể phân tích text. Vui lòng thử lại.');
+        return;
+      }
+      
+      const parsedTransactions = responseData?.data?.transactions || [];
+
+      if (parsedTransactions.length === 0) {
+        Alert.alert('Thông báo', 'Không tìm thấy giao dịch nào từ text này');
+        return;
+      }
+
+      // Lọc các transaction có user_category_id (đã map được với danh mục)
+      const validTransactions = parsedTransactions.filter((tx: any) => tx.user_category_id !== null);
+      const invalidTransactions = parsedTransactions.filter((tx: any) => tx.user_category_id === null);
+
+      if (validTransactions.length === 0) {
+        Alert.alert(
+          'Thông báo',
+          `Không tìm thấy danh mục phù hợp cho các giao dịch:\n${parsedTransactions
+            .map((tx: any) => `• ${tx.content} - ${tx.category_name}`)
+            .join('\n')}\n\nVui lòng tạo danh mục trước hoặc thử lại.`
+        );
+        return;
+      }
+
+      const detectedList = validTransactions.map((tx: any, index: number) => ({
+        id: `detected-${Date.now()}-${index}`,
+        description: tx.content?.trim() ?? '',
+        amount: Number(tx.amount) || 0,
+        categoryId: tx.user_category_id,
+            type: tx.type,
+        date: tx.transaction_date,
+        category: resolveCategory(tx.user_category_id),
+      }));
+
+      setDetectedTransactions(detectedList);
+      setShowDetectedModal(true);
+
+      if (invalidTransactions.length > 0) {
+        Alert.alert(
+          'Chú ý',
+          `Không tìm thấy danh mục cho ${invalidTransactions.length} giao dịch:\n${invalidTransactions
+            .map((tx: any) => `• ${tx.content} - ${tx.category_name}`)
+            .join('\n')}\n\nBạn có thể thêm danh mục rồi thử lại.`
+        );
       }
     } catch (error) {
-      Alert.alert('Lỗi', 'Có lỗi xảy ra khi xử lý ảnh');
-      setIsProcessingImage(false);
-      setSelectedImage(null);
+      console.error('Failed to parse text with AI:', error);
+      Alert.alert(
+        'Lỗi',
+        getErrorMessage(error, 'Không thể phân tích text. Vui lòng thử lại.'),
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setIsParsingText(false);
     }
   };
 
@@ -660,7 +964,7 @@ export default function AddTransactionScreen() {
 
 
         {/* Transaction List */}
-        <ScrollView>
+        <ScrollView ref={scrollViewRef}>
           <View style={styles.transactionList}>
             {transactionGroups.map((group) => (
               <View key={group.date}>
@@ -673,6 +977,11 @@ export default function AddTransactionScreen() {
                 {group.transactions.map((transaction) => {
                   const category = transaction.category || getCategoryInfo(transaction.userCategoryId);
                   const isIncome = transaction.type === 1 || transaction.type === 'income';
+                  // Giao dịch mới nếu được tạo trong 5 phút gần đây (so với thời gian hiện tại)
+                  const transactionTime = new Date(transaction.createdAt).getTime();
+                  const now = Date.now();
+                  const fiveMinutesAgo = now - 5 * 60 * 1000;
+                  const isNew = transactionTime >= fiveMinutesAgo;
 
                   return (
                     <View key={transaction.id} style={styles.transactionItem}>
@@ -686,7 +995,14 @@ export default function AddTransactionScreen() {
                               iconColor="#6B7280"
                               onPress={() => openActions(transaction)}
                             />
+                            <View style={styles.transactionNoteContainer}>
                             <Text style={styles.transactionNote}>{transaction.note || transaction.content || ''}</Text>
+                              {isNew && (
+                                <View style={styles.newBadge}>
+                                  <Text style={styles.newBadgeText}>Mới</Text>
+                                </View>
+                              )}
+                            </View>
                           </View>
 
                           <View style={styles.transactionRight}>
@@ -804,29 +1120,14 @@ export default function AddTransactionScreen() {
           </View>
         </KeyboardAvoidingView>
 
-        {/* Wallet Selection Modal */}
-        <Portal>
-          <Modal
+        <WalletSelectModal
             visible={showWalletModal}
+          wallets={wallets}
+          selectedWalletId={selectedWallet?.id}
             onDismiss={() => setShowWalletModal(false)}
-            contentContainerStyle={styles.modalContent}
-          >
-            <Text style={styles.modalTitle}>Chọn ví</Text>
-            <ScrollView>
-              {(wallets).map((wallet) => (
-                <List.Item
-                  left={props => <List.Icon {...props} icon="wallet-outline" color={theme.colors.primary} />}
-                  right={props => selectedWallet?.id === wallet.id ? <List.Icon {...props} icon="check" color={theme.colors.primary} /> : null}
-                  key={wallet.id}
-                  title={wallet.name}
-                  description={`${formatCurrency(wallet.amount)} ${wallet.currency}`}
-                  onPress={() => handleWalletSelect(wallet)}
-                  style={styles.listItem}
-                />
-              ))}
-            </ScrollView>
-          </Modal>
-        </Portal>
+          onSelect={handleWalletSelectById}
+          title="Chọn ví"
+        />
 
         {/* Actions Bottom Sheet */}
         <Portal>
@@ -854,7 +1155,7 @@ export default function AddTransactionScreen() {
           visible={showAddSheet}
           mode="add"
           transaction={null}
-          categories={categories}
+          categories={modalCategories}
           onDismiss={() => {
             setShowAddSheet(false);
           }}
@@ -867,7 +1168,7 @@ export default function AddTransactionScreen() {
           visible={showEditSheet}
           mode="edit"
           transaction={actionTx}
-          categories={categories}
+          categories={modalCategories}
           onDismiss={() => {
             setShowEditSheet(false);
             setActionTx(null);
@@ -884,7 +1185,7 @@ export default function AddTransactionScreen() {
             setDetectedTransactions([]);
           }}
           transactions={detectedTransactions}
-          categories={categories}
+          categories={modalCategories}
           onCategoryChange={handleCategoryChange}
           onDelete={handleDeleteDetected}
           onEdit={handleEditDetected}
@@ -1097,10 +1398,29 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
+  transactionNoteContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
   transactionNote: {
     fontSize: 16,
     color: '#374151',
     fontWeight: '500',
+    flex: 1,
+  },
+  newBadge: {
+    backgroundColor: '#FCD34D',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    marginLeft: 4,
+  },
+  newBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#92400E',
   },
   transactionRight: {
     alignItems: 'flex-end',

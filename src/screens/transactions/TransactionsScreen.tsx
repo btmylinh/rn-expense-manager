@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,9 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
+  ActivityIndicator,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -19,11 +22,14 @@ import {
 import { DatePickerModal } from 'react-native-paper-dates';
 import { useAppTheme, getIconColor } from '../../theme';
 import { formatCurrency } from '../../utils/format';
-import { fakeApi } from '../../services/fakeApi';
 import AppBar from '../../components/AppBar';
 import TransactionModal from '../../components/TransactionModal';
 import NotificationBell from '../../components/NotificationBell';
 import { useAuth } from '../../contexts/AuthContext';
+import { userApi } from '../../api/userApi';
+import { transactionApi } from '../../api/transactionApi';
+import { useMetadata } from '../../contexts/MetadataContext';
+import { getErrorMessage } from '../../utils/errorHandler';
 
 interface Transaction {
   id: number;
@@ -57,14 +63,33 @@ interface FilterState {
 export default function TransactionsScreen({ navigation }: any) {
   const theme = useAppTheme();
   const { user } = useAuth();
-  const userId = user?.id || 1;
+  const numericUserId = user?.id;
+  const hasValidUser = typeof numericUserId === 'number' && !Number.isNaN(numericUserId) && numericUserId > 0;
 
   // Data state
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [filteredTransactions, setFilteredTransactions] = useState<Transaction[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
-  const [wallets, setWallets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [userSummary, setUserSummary] = useState<{ id: number; name?: string; email?: string } | null>(null);
+  const { categories, wallets, ensureCategories, ensureWallets } = useMetadata();
+  const metaRef = useRef<{ categories: any[]; wallets: any[] }>({ categories: [], wallets: [] });
+  const metaLoadedRef = useRef(false);
+  const PAGE_LIMIT = 40;
+
+  useEffect(() => {
+    if (categories.length) {
+      metaRef.current.categories = categories;
+    }
+  }, [categories]);
+
+  useEffect(() => {
+    if (wallets.length) {
+      metaRef.current.wallets = wallets;
+    }
+  }, [wallets]);
 
   // Filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -83,48 +108,162 @@ export default function TransactionsScreen({ navigation }: any) {
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Load data
+  const fetchTransactions = useCallback(
+    async (targetPage: number = 1, append: boolean = false) => {
+      if (!hasValidUser || !numericUserId) {
+        setTransactions([]);
+        setFilteredTransactions([]);
+        setLoading(false);
+        setIsLoadingMore(false);
+        setHasMore(false);
+        return;
+      }
+
+      const params = {
+        page: targetPage,
+        limit: PAGE_LIMIT,
+        sortBy: 'transaction_date',
+        sortOrder: 'DESC' as const,
+      };
+
+      if (append) {
+        setIsLoadingMore(true);
+      } else {
+        setLoading(true);
+      }
+
+      try {
+        let txsResponse;
+        if (!metaLoadedRef.current) {
+          const [response, categoryList, walletList] = await Promise.all([
+            transactionApi.getTransactions(params),
+            ensureCategories(),
+            ensureWallets(),
+          ]);
+          txsResponse = response;
+          metaRef.current = {
+            categories: Array.isArray(categoryList) ? categoryList : categories,
+            wallets: Array.isArray(walletList) ? walletList : wallets,
+          };
+          metaLoadedRef.current = true;
+        } else {
+          txsResponse = await transactionApi.getTransactions(params);
+        }
+
+        const payload = txsResponse.data?.data ?? {};
+        const txs =
+          payload.transactions ??
+          txsResponse.data?.transactions ??
+          [];
+        const totalPages =
+          payload.totalPages ??
+          payload.total_pages ??
+          (payload.total ? Math.ceil(payload.total / PAGE_LIMIT) : 1);
+
+        const categorySource =
+          metaRef.current.categories.length > 0 ? metaRef.current.categories : categories;
+        const walletSource =
+          metaRef.current.wallets.length > 0 ? metaRef.current.wallets : wallets;
+
+        const catMap = new Map((categorySource || []).map(cat => [cat.id, cat]));
+        const walletMap = new Map((walletSource || []).map(wallet => [wallet.id, wallet]));
+
+        const enrichedTransactions: Transaction[] = txs.map((tx: any) => {
+          const category = catMap.get(tx.user_category_id);
+          const wallet = walletMap.get(tx.wallet_id);
+          return {
+            id: tx.id,
+            userId: tx.user_id,
+            walletId: tx.wallet_id,
+            userCategoryId: tx.user_category_id,
+            amount: tx.amount,
+            transactionDate: tx.transaction_date,
+            content: tx.content,
+            type: tx.type,
+            category,
+            wallet,
+          };
+        });
+
+        setTransactions(prev => {
+          if (!append) {
+            return enrichedTransactions;
+          }
+          const existingIds = new Set(prev.map(item => item.id));
+          const merged = enrichedTransactions.filter(tx => !existingIds.has(tx.id));
+          return [...prev, ...merged];
+        });
+
+        setPage(targetPage);
+        setHasMore(targetPage < (totalPages || 1));
+      } catch (error) {
+        console.error('Error loading transactions:', error);
+        if (!append) {
+          Alert.alert('Lỗi', 'Không thể tải danh sách giao dịch');
+        }
+      } finally {
+        if (append) {
+          setIsLoadingMore(false);
+        } else {
+          setLoading(false);
+        }
+      }
+    },
+    [PAGE_LIMIT, categories, ensureCategories, ensureWallets, hasValidUser, numericUserId, wallets]
+  );
+
   useEffect(() => {
-    loadData();
-  }, []);
+    fetchTransactions(1, false);
+  }, [fetchTransactions]);
 
   useFocusEffect(
     useCallback(() => {
-      loadData();
-    }, [])
+      fetchTransactions(1, false);
+    }, [fetchTransactions])
   );
 
-  const loadData = async () => {
-    try {
-      setLoading(true);
-      const [txs, cats, ws] = await Promise.all([
-        fakeApi.getTransactions(userId),
-        fakeApi.getUserCategories(userId),
-        fakeApi.getWallets(userId),
-      ]);
-
-      // Enrich transactions with category and wallet data
-      const enrichedTransactions = (txs as Transaction[]).map(tx => {
-        const category = (cats as any[]).find(c => c.id === tx.userCategoryId);
-        const wallet = (ws as any[]).find(w => w.id === tx.walletId);
-        return {
-          ...tx,
-          category,
-          wallet,
-        };
-      });
-
-      setTransactions(enrichedTransactions);
-      setCategories(cats as any[]);
-      setWallets(ws as any[]);
-      setFilteredTransactions(enrichedTransactions);
-    } catch (error) {
-      console.error('Error loading transactions:', error);
-      Alert.alert('Lỗi', 'Không thể tải danh sách giao dịch');
-    } finally {
-      setLoading(false);
+  const handleLoadMore = useCallback(() => {
+    if (!hasMore || loading || isLoadingMore) {
+      return;
     }
-  };
+    fetchTransactions(page + 1, true);
+  }, [fetchTransactions, hasMore, isLoadingMore, loading, page]);
+
+  const handleScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+      const threshold = 120;
+      if (layoutMeasurement.height + contentOffset.y >= contentSize.height - threshold) {
+        handleLoadMore();
+      }
+    },
+    [handleLoadMore]
+  );
+
+  const loadUserProfile = useCallback(async () => {
+    if (!hasValidUser || !numericUserId) {
+      setUserSummary(null);
+      return;
+    }
+
+    try {
+      const response = await userApi.getUserById(numericUserId);
+      const payload = response.data?.user;
+      if (payload?.id) {
+        setUserSummary({
+          id: typeof payload.id === 'number' ? payload.id : Number(payload.id),
+          name: payload.name,
+          email: payload.email,
+        });
+      }
+    } catch (error) {
+      console.warn('Unable to load user profile', error);
+    }
+  }, [hasValidUser, numericUserId]);
+
+  useEffect(() => {
+    loadUserProfile();
+  }, [loadUserProfile]);
 
   // Apply filters
   useEffect(() => {
@@ -208,14 +347,25 @@ export default function TransactionsScreen({ navigation }: any) {
 
     try {
       setIsSaving(true);
-      await fakeApi.updateTransaction(userId, selectedTransaction.id, data);
-      await loadData();
+      if (!hasValidUser || !numericUserId) {
+        Alert.alert('Lỗi', 'Không xác định được người dùng hiện tại');
+        return;
+      }
+
+      await transactionApi.updateTransaction(selectedTransaction.id, {
+        amount: data.amount,
+        transaction_date: data.transactionDate,
+        content: data.content,
+        user_category_id: data.userCategoryId,
+        type: data.type as 1 | 2,
+      });
+      await fetchTransactions(1, false);
       setShowEditModal(false);
       setSelectedTransaction(null);
       Alert.alert('Thành công', 'Đã cập nhật giao dịch');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving transaction:', error);
-      Alert.alert('Lỗi', 'Không thể cập nhật giao dịch');
+      Alert.alert('Lỗi', getErrorMessage(error, 'Không thể cập nhật giao dịch'));
     } finally {
       setIsSaving(false);
     }
@@ -235,14 +385,19 @@ export default function TransactionsScreen({ navigation }: any) {
           style: 'destructive',
           onPress: async () => {
             try {
-              await fakeApi.deleteTransaction(userId, selectedTransaction.id);
-              await loadData();
+              if (!hasValidUser || !numericUserId) {
+                Alert.alert('Lỗi', 'Không xác định được người dùng hiện tại');
+                return;
+              }
+
+              await transactionApi.deleteTransaction(selectedTransaction.id);
+              await fetchTransactions(1, false);
               setShowEditModal(false);
               setSelectedTransaction(null);
               Alert.alert('Thành công', 'Đã xóa giao dịch');
-            } catch (error) {
+            } catch (error: any) {
               console.error('Error deleting transaction:', error);
-              Alert.alert('Lỗi', 'Không thể xóa giao dịch');
+              Alert.alert('Lỗi', getErrorMessage(error, 'Không thể xóa giao dịch'));
             }
           },
         },
@@ -272,7 +427,7 @@ export default function TransactionsScreen({ navigation }: any) {
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <AppBar 
-        title={`Giao dịch`} 
+        title={userSummary?.name ? `Giao dịch (${userSummary.name})` : 'Giao dịch'} 
         align="center"
         rightIcons={[
           {
@@ -483,7 +638,11 @@ export default function TransactionsScreen({ navigation }: any) {
       </View>
 
       {/* Transaction List */}
-      <ScrollView style={styles.content}>
+      <ScrollView
+        style={styles.content}
+        onScroll={handleScroll}
+        scrollEventThrottle={200}
+      >
         {loading ? (
           <View style={styles.emptyContainer}>
             <Text style={[styles.emptyText, { color: theme.colors.onSurfaceVariant }]}>Đang tải...</Text>
@@ -509,8 +668,9 @@ export default function TransactionsScreen({ navigation }: any) {
             </Text>
           </View>
         ) : (
-          transactionGroups.map(([date, txs]) => (
-            <View key={date}>
+          <>
+            {transactionGroups.map(([date, txs]) => (
+              <View key={date}>
               {/* Date Header */}
               <View style={[styles.dateHeader, { backgroundColor: theme.colors.surface }]}>
                 <Text style={[styles.dateText, { color: theme.colors.onSurface }]}>{date}</Text>
@@ -574,8 +734,17 @@ export default function TransactionsScreen({ navigation }: any) {
                   </TouchableOpacity>
                 );
               })}
-            </View>
-          ))
+              </View>
+            ))}
+            {isLoadingMore && (
+              <View style={styles.loadMoreIndicator}>
+                <ActivityIndicator size="small" color={theme.colors.primary} />
+                <Text style={[styles.loadMoreText, { color: theme.colors.onSurfaceVariant }]}>
+                  Đang tải thêm...
+                </Text>
+              </View>
+            )}
+          </>
         )}
       </ScrollView>
 
@@ -595,7 +764,7 @@ export default function TransactionsScreen({ navigation }: any) {
             type: selectedTransaction.type,
             createdAt: selectedTransaction.transactionDate,
           }}
-          categories={categories}
+          categories={categories.map(cat => ({ ...cat, type: cat.type ?? 1 }))}
           onDismiss={() => {
             setShowEditModal(false);
             setSelectedTransaction(null);
@@ -757,5 +926,15 @@ const styles = StyleSheet.create({
   amountText: {
     fontSize: 16,
     fontWeight: '700',
+  },
+  loadMoreIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+  },
+  loadMoreText: {
+    marginLeft: 8,
+    fontSize: 13,
   },
 });

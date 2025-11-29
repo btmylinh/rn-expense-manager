@@ -3,7 +3,7 @@ import { StreakState } from './streakHelpers';
 
 export interface StreakNotificationData {
   userId: number;
-  type: 'streak_warning' | 'streak_lost' | 'streak_milestone' | 'streak_reminder' | 'streak_freeze_reset';
+  type: 'streak_warning' | 'streak_lost' | 'streak_milestone' | 'streak_reminder';
   title: string;
   message: string;
   data?: any;
@@ -94,21 +94,6 @@ export const generateDailyReminder = (
 };
 
 /**
- * Generate freeze reset notification (Monday)
- */
-export const generateFreezeResetNotification = (
-  userId: number
-): StreakNotificationData => {
-  return {
-    userId,
-    type: 'streak_freeze_reset',
-    title: 'Freeze đã được reset!',
-    message: 'Tuần mới bắt đầu! Bạn có thêm 1 freeze để sử dụng trong tuần này.',
-    data: { action: 'open_streak_settings' }
-  };
-};
-
-/**
  * Check if should send daily reminder based on settings
  */
 export const shouldSendDailyReminder = (
@@ -148,8 +133,6 @@ export const getNotificationPriority = (
       return 'default';
     case 'streak_reminder':
       return 'default';
-    case 'streak_freeze_reset':
-      return 'low';
     default:
       return 'default';
   }

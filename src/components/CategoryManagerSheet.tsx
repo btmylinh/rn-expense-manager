@@ -3,8 +3,9 @@ import { View, Alert, ScrollView, Platform, StyleSheet, FlatList, TouchableOpaci
 import { Portal, Modal, Text, IconButton, List, Button, Chip, Menu, Divider, SegmentedButtons, Dialog, TextInput } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import CategoryCreateForm from './CategoryCreateForm';
-import { fakeApi } from '../services/fakeApi';
+import { userCategoryApi } from '../api/userCategoryApi';
 import { useAppTheme, getIconColor } from '../theme';
+import { getErrorMessage } from '../utils/errorHandler';
 
 interface Props {
   userId: number;
@@ -15,7 +16,7 @@ interface Props {
 
 export default function CategoryManagerSheet({ userId, visible, onDismiss, onChanged }: Props) {
   const theme = useAppTheme();
-  const [categories, setCategories] = useState<Array<{ id: number; userId: number; name: string; type: number; icon?: string; color?: string }>>([]);
+  const [categories, setCategories] = useState<Array<{ id: number; userId: number; name: string; type: number; icon?: string }>>([]);
   const [createVisible, setCreateVisible] = useState(false);
   const [loading, setLoading] = useState(false);
   const [filterType, setFilterType] = useState<'expense' | 'income'>('expense');
@@ -29,16 +30,28 @@ export default function CategoryManagerSheet({ userId, visible, onDismiss, onCha
     if (!visible) return;
     let mounted = true;
     (async () => {
-      const list = await fakeApi.getUserCategories(userId);
+      try {
+        const response = await userCategoryApi.getUserCategories();
+        // Response structure: { code, message, data: [...] }
+        const list = response.data?.data || [];
       if (mounted) setCategories(list as any);
+      } catch (error) {
+        console.error('Failed to load categories:', error);
+      }
     })();
     return () => { mounted = false; };
   }, [visible, userId]);
 
   const refresh = async () => {
-    const list = await fakeApi.getUserCategories(userId);
+    try {
+      const response = await userCategoryApi.getUserCategories();
+      // Response structure: { code, message, data: [...] }
+      const list = response.data?.data || [];
     setCategories(list as any);
     onChanged?.();
+    } catch (error) {
+      console.error('Failed to refresh categories:', error);
+    }
   };
 
   // validation handled inside CategoryCreateForm
@@ -143,9 +156,12 @@ export default function CategoryManagerSheet({ userId, visible, onDismiss, onCha
                     Alert.alert('Xóa danh mục', `Xóa danh mục '${c.name}'?`, [
                       { text: 'Hủy' },
                       { text: 'Xóa', style: 'destructive', onPress: async () => {
-                        const res = await fakeApi.deleteCategory(userId, c.id);
-                        if (!(res as any).success) { Alert.alert('Lỗi', (res as any).message || 'Không thể xóa'); return; }
+                        try {
+                          await userCategoryApi.deleteCategory(c.id);
                         refresh();
+                        } catch (error: any) {
+                          Alert.alert('Lỗi', getErrorMessage(error, 'Không thể xóa danh mục'));
+                        }
                       } }
                     ]);
                   }} />
@@ -170,9 +186,17 @@ export default function CategoryManagerSheet({ userId, visible, onDismiss, onCha
             try {
               // Force type from current tab
               const forcedType = filterType === 'income' ? 1 : 2;
-              await fakeApi.addCategory(userId, name, forcedType, icon);
+              await userCategoryApi.createCategory({
+                name: name.trim(),
+                type: forcedType,
+                icon: icon || 'tag-outline',
+              });
               await refresh();
-            } finally { setLoading(false); }
+            } catch (error: any) {
+              Alert.alert('Lỗi', getErrorMessage(error, 'Không thể tạo danh mục'));
+            } finally { 
+              setLoading(false); 
+            }
           }}
         />
 
@@ -187,10 +211,17 @@ export default function CategoryManagerSheet({ userId, visible, onDismiss, onCha
           allowTypeChange={false}
           onSubmit={async ({ name, icon }) => {
             if (!renameId) return;
-            await fakeApi.updateCategory(userId, renameId, { name: name.trim(), icon });
+            try {
+              await userCategoryApi.updateCategory(renameId, {
+                name: name.trim(),
+                icon: icon || 'tag-outline',
+              });
             setEditVisible(false);
             setRenameId(null);
             refresh();
+            } catch (error: any) {
+              Alert.alert('Lỗi', getErrorMessage(error, 'Không thể cập nhật danh mục'));
+            }
           }}
         />
       </Modal>

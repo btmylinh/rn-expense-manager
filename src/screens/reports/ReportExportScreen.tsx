@@ -13,7 +13,9 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Card, Button, Menu, TextInput } from 'react-native-paper';
 import { useAppTheme } from '../../theme';
 import { formatCurrency } from '../../utils/format';
-import { fakeApi } from '../../services/fakeApi';
+import { reportApi } from '../../api/reportApi';
+import { walletApi } from '../../api/walletApi';
+import { userCategoryApi } from '../../api/userCategoryApi';
 import { useAuth } from '../../contexts/AuthContext';
 import AppBar from '../../components/AppBar';
 import { DatePickerModal } from 'react-native-paper-dates';
@@ -39,7 +41,7 @@ interface Transaction {
 export default function ReportExportScreen({ navigation }: any) {
 	const theme = useAppTheme();
 	const { user } = useAuth();
-	const userId = user?.id || 1;
+	const userId = user?.id;
 	const insets = useSafeAreaInsets();
 
 	// State
@@ -75,12 +77,14 @@ export default function ReportExportScreen({ navigation }: any) {
 	const loadData = async () => {
 		try {
 			setLoading(true);
-			const [ws, cats] = await Promise.all([
-				fakeApi.getWallets(userId),
-				fakeApi.getUserCategories(userId),
+			const [walletsResponse, categoriesResponse] = await Promise.all([
+				walletApi.getWallets(),
+				userCategoryApi.getUserCategories(),
 			]);
-			setWallets(ws as any[]);
-			setCategories(cats as any[]);
+			const walletsData = walletsResponse.data?.wallets || [];
+			const categoriesData = categoriesResponse.data?.data || [];
+			setWallets(walletsData);
+			setCategories(categoriesData);
 		} catch (error) {
 			console.error('Error loading data:', error);
 			Alert.alert('Lỗi', 'Không thể tải dữ liệu');
@@ -121,15 +125,36 @@ export default function ReportExportScreen({ navigation }: any) {
 		try {
 			const { start, end } = getDateRange();
 			
-			const result = await fakeApi.exportReportExcel(userId, {
-				walletId: selectedWalletId || undefined,
+			const response = await reportApi.exportReport({
+				wallet_id: selectedWalletId || undefined,
 				type: selectedType || undefined,
-				startDate: start ? start.toISOString().split('T')[0] : undefined,
-				endDate: end ? end.toISOString().split('T')[0] : undefined,
+				start_date: start ? start.toISOString().split('T')[0] : undefined,
+				end_date: end ? end.toISOString().split('T')[0] : undefined,
 			});
 
-			if (result.success) {
-				setPreviewData(result);
+			const reportData = response.data?.data;
+			if (reportData) {
+				// Map backend fields to frontend format
+				const mappedData = {
+					success: true,
+					data: reportData.data.map((tx: any) => ({
+						id: tx.id,
+						userId: tx.user_id,
+						walletId: tx.wallet_id,
+						userCategoryId: tx.user_category_id,
+						amount: tx.amount,
+						transactionDate: tx.transaction_date,
+						content: tx.content,
+						type: tx.type,
+						note: tx.note,
+						categoryName: tx.category_name,
+						categoryIcon: tx.category_icon,
+						walletName: tx.wallet_name,
+						typeName: tx.type_name,
+					})),
+					summary: reportData.summary,
+				};
+				setPreviewData(mappedData);
 			}
 		} catch (error) {
 			console.error('Error loading preview:', error);

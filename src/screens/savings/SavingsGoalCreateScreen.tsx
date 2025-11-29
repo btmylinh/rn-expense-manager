@@ -8,9 +8,10 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigators/RootNavigator';
 import { useAppTheme } from '../../theme';
 import { useAuth } from '../../contexts/AuthContext';
-import { fakeApi } from '../../services/fakeApi';
+import { savingsGoalApi } from '../../api/savingsGoalApi';
 import AppBar from '../../components/AppBar';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { getErrorMessage } from '../../utils/errorHandler';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 type SavingsGoalCreateRouteProp = RouteProp<RootStackParamList, 'SavingsGoalCreate'>;
@@ -39,7 +40,7 @@ export default function SavingsGoalCreateScreen() {
 	const navigation = useNavigation<NavigationProp>();
 	const route = useRoute<SavingsGoalCreateRouteProp>();
 	const { user } = useAuth();
-	const userId = user?.id || 1;
+	const userId = user?.id;
 	
 	const { goalId } = route.params || {};
 	const isEditMode = !!goalId;
@@ -69,12 +70,12 @@ export default function SavingsGoalCreateScreen() {
 	const loadGoalData = async () => {
 		try {
 			setLoading(true);
-			const response = await fakeApi.getSavingsGoalDetail(userId, goalId!);
-		if (response.success && response.data) {
-			const goal = response.data;
+			const response = await savingsGoalApi.getSavingsGoalById(goalId!);
+			const goal = response.data?.data;
+			if (goal) {
 			setName(goal.name);
-			setTargetAmount(goal.targetAmount.toString());
-			setCurrentAmount(goal.currentAmount.toString());
+				setTargetAmount(goal.target_amount.toString());
+				setCurrentAmount(goal.current_amount.toString());
 			setDeadline(new Date(goal.deadline));
 			setSelectedIcon(goal.icon);
 			setSelectedColor(goal.color);
@@ -150,35 +151,34 @@ export default function SavingsGoalCreateScreen() {
 			
 			const goalData = {
 				name: name.trim(),
-				targetAmount: parseFloat(targetAmount),
+				target_amount: parseFloat(targetAmount),
 				deadline: deadline.toISOString().split('T')[0],
 				icon: selectedIcon,
 				color: selectedColor,
 				currency: selectedCurrency
 			};
 			
-			let response;
 			if (isEditMode) {
-				response = await fakeApi.updateSavingsGoal(userId, goalId!, goalData);
+				await savingsGoalApi.updateSavingsGoal(goalId!, goalData);
+				setSnackMessage('Cập nhật mục tiêu thành công!');
 			} else {
-				response = await fakeApi.createSavingsGoal(userId, goalData);
+				const response = await savingsGoalApi.createSavingsGoal(goalData);
 				// If there's initial amount, add it as a contribution
 				if (parseFloat(currentAmount) > 0) {
-					await fakeApi.addContribution(userId, response.data.id, parseFloat(currentAmount), 'Số tiền ban đầu');
+					await savingsGoalApi.createContribution(response.data?.data?.id || 0, {
+						amount: parseFloat(currentAmount),
+						note: 'Số tiền ban đầu'
+					});
 				}
+				setSnackMessage('Tạo mục tiêu thành công!');
 			}
 			
-			if (response.success) {
-				setSnackMessage(isEditMode ? 'Cập nhật mục tiêu thành công!' : 'Tạo mục tiêu thành công!');
 				setTimeout(() => {
 					navigation.goBack();
 				}, 1000);
-			} else {
-				setSnackMessage('Có lỗi xảy ra');
-			}
-		} catch (error) {
+		} catch (error: any) {
 			console.error('Error saving goal:', error);
-			setSnackMessage('Có lỗi xảy ra khi lưu mục tiêu');
+			setSnackMessage(getErrorMessage(error, 'Có lỗi xảy ra khi lưu mục tiêu'));
 		} finally {
 			setLoading(false);
 		}

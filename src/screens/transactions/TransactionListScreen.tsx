@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -15,9 +15,12 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAppTheme } from '../../theme';
 import { formatCurrency } from '../../utils/format';
 import { getIconColor } from '../../theme';
-import { fakeApi } from '../../services/fakeApi';
 import TransactionModal from '../../components/TransactionModal';
 import AppBar from '../../components/AppBar';
+import { useMetadata } from '../../contexts/MetadataContext';
+import { getErrorMessage } from '../../utils/errorHandler';
+import { budgetApi } from '../../api/budgetApi';
+import { transactionApi } from '../../api/transactionApi';
 
 type RootStackParamList = {
   TransactionList: { budgetId: number };
@@ -36,8 +39,19 @@ export default function TransactionListScreen() {
   const [loading, setLoading] = useState(true);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<any>(null);
-  const [categories, setCategories] = useState<any[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+  const { categories, ensureCategories } = useMetadata();
+
+  const resolveCategory = useCallback(
+    (categoryId: number) =>
+      categories.find(c => c.id === categoryId) || {
+        id: categoryId,
+        name: 'Chưa phân loại',
+        icon: 'tag-outline',
+        type: 2,
+      },
+    [categories]
+  );
 
   useEffect(() => {
     loadData();
@@ -47,23 +61,85 @@ export default function TransactionListScreen() {
     try {
       setLoading(true);
       
-      // Get budget transactions data and categories
-      const [result, categoriesResult] = await Promise.all([
-        fakeApi.getBudgetTransactions(1, budgetId),
-        fakeApi.getUserCategories(1),
-      ]);
-      
-      if (result.success) {
-        setData(result.data);
-      } else {
-        console.error('Error loading transaction data:', result.message);
+      await ensureCategories();
+      const budgetResponse = await budgetApi.getBudgetById(budgetId);
+      const budgetData = budgetResponse.data?.data;
+
+      if (!budgetData) {
+        Alert.alert('Lỗi', 'Không tìm thấy ngân sách');
+        navigation.goBack();
+        return;
       }
-      
-      if (categoriesResult) {
-        setCategories(categoriesResult);
-      }
+
+      const transactionsResponse = await transactionApi.getTransactions({
+        wallet_id: budgetData.wallet_id,
+        user_category_id: budgetData.user_category_id,
+        start_date: budgetData.start_date,
+        end_date: budgetData.end_date,
+        type: 2,
+        limit: 1000,
+        sortBy: 'transaction_date',
+        sortOrder: 'DESC',
+      });
+
+      const rawTransactions =
+        transactionsResponse.data?.data?.transactions ||
+        transactionsResponse.data?.transactions ||
+        [];
+
+      const mappedTransactions = rawTransactions.map((tx: any) => ({
+        id: tx.id,
+        amount: Number(tx.amount),
+        type: tx.type,
+        date: tx.transaction_date,
+        content: tx.content,
+        note: tx.note,
+        userId: tx.user_id,
+        walletId: tx.wallet_id,
+        userCategoryId: tx.user_category_id,
+        category: resolveCategory(tx.user_category_id),
+      }));
+
+      const summary = {
+        count: mappedTransactions.length,
+        expense: mappedTransactions.reduce(
+          (sum: number, tx: any) => sum + (tx.type === 2 ? Math.abs(tx.amount) : 0),
+          0
+        ),
+      };
+
+      const groups = new Map<string, { total: number; transactions: any[] }>();
+      mappedTransactions.forEach((tx: any) => {
+        const date = new Date(tx.date);
+        if (Number.isNaN(date.getTime())) {
+          return;
+        }
+        const iso = date.toISOString().split('T')[0];
+        const entry = groups.get(iso) || { total: 0, transactions: [] };
+        entry.total += tx.type === 1 ? tx.amount : -tx.amount;
+        entry.transactions.push(tx);
+        groups.set(iso, entry);
+      });
+
+      const transactionGroups = Array.from(groups.entries())
+        .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+        .map(([iso, value]) => ({
+          date: iso,
+          total: value.total,
+          transactions: value.transactions,
+        }));
+
+      setData({
+        summary,
+        transactionGroups,
+        budget: {
+          walletId: budgetData.wallet_id,
+          userCategoryId: budgetData.user_category_id,
+        },
+      });
     } catch (error) {
       console.error('Error loading transaction data:', error);
+      Alert.alert('Lỗi', 'Không thể tải danh sách giao dịch');
     } finally {
       setLoading(false);
     }
@@ -73,14 +149,14 @@ export default function TransactionListScreen() {
     // Map transaction to format expected by TransactionModal
     const transactionForModal = {
       id: transaction.id,
-      userId: 1,
-      walletId: data.budget?.walletId || 1,
-      userCategoryId: transaction.category.id,
+      userId: transaction.userId,
+      walletId: transaction.walletId || data?.budget?.walletId || 1,
+      userCategoryId: transaction.userCategoryId || transaction.category?.id,
       amount: transaction.amount,
       transactionDate: transaction.date,
       content: transaction.content || '',
-      note: transaction.content || '',
-      type: transaction.type === 'income' ? 1 : 2,
+      note: transaction.note || transaction.content || '',
+      type: typeof transaction.type === 'number' ? transaction.type : transaction.type === 'income' ? 1 : 2,
       createdAt: transaction.date,
     };
     
@@ -99,18 +175,20 @@ export default function TransactionListScreen() {
     
     setIsSaving(true);
     try {
-      const result = await fakeApi.updateTransaction(1, selectedTransaction.id, saveData);
-      
-      if (result.success) {
-        // Reload data to reflect changes
+      await transactionApi.updateTransaction(selectedTransaction.id, {
+        user_category_id: saveData.userCategoryId,
+        amount: Math.abs(saveData.amount),
+        type: saveData.type as 1 | 2,
+        transaction_date: saveData.transactionDate,
+        content: saveData.content,
+        wallet_id: selectedTransaction.walletId,
+      });
+
         await loadData();
         setShowEditModal(false);
         setSelectedTransaction(null);
-      } else {
-        Alert.alert('Lỗi', result.message || 'Có lỗi xảy ra khi cập nhật giao dịch');
-      }
-    } catch (error) {
-      Alert.alert('Lỗi', 'Có lỗi xảy ra khi cập nhật giao dịch');
+    } catch (error: any) {
+      Alert.alert('Lỗi', getErrorMessage(error, 'Có lỗi xảy ra khi cập nhật giao dịch'));
       throw error;
     } finally {
       setIsSaving(false);
@@ -380,7 +458,7 @@ export default function TransactionListScreen() {
         visible={showEditModal}
         mode="edit"
         transaction={selectedTransaction}
-        categories={categories}
+        categories={categories.map(cat => ({ ...cat, type: cat.type ?? 1 }))}
         onDismiss={() => {
           setShowEditModal(false);
           setSelectedTransaction(null);

@@ -39,13 +39,13 @@ const ExpenseChartWidget = ({ data, currentExpense, previousExpense, dateRange }
 
 				{data.length > 0 ? (
 					<View style={styles.chartWrapper}>
-						<BarChart
-							data={data}
-							width={SCREEN_WIDTH - 120}
-							height={280}
-							spacing={80}
-							barWidth={60}
-							barBorderRadius={10}
+					<BarChart
+						data={data}
+						width={SCREEN_WIDTH - 120}
+						height={280}
+						spacing={120}
+						barWidth={60}
+						barBorderRadius={10}
 							noOfSections={5}
 							maxValue={Math.max(currentExpense, previousExpense) * 1.2}
 							yAxisThickness={1}

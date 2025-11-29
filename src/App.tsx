@@ -11,6 +11,7 @@ import { lightTheme } from './theme';
 import { registerTranslation, en } from 'react-native-paper-dates';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { AuthProvider } from './contexts/AuthContext';
+import { MetadataProvider } from './contexts/MetadataContext';
 
 // Đăng ký locale cho react-native-paper-dates (dùng tiếng Anh cho 'vi' nếu không có bản dịch)
 registerTranslation('vi', en);
@@ -69,9 +70,11 @@ export default function App() {
             <SafeAreaProvider>
                 <PaperProvider theme={lightTheme}>
                         <AuthProvider>
+							<MetadataProvider>
                             <NotificationProvider>
                     <RootNavigator />
                             </NotificationProvider>
+							</MetadataProvider>
                         </AuthProvider>
                 </PaperProvider>
             </SafeAreaProvider>

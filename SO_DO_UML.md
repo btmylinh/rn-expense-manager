@@ -253,7 +253,6 @@ Các bước:
   - Cập nhật ngày giao dịch cuối
   - Lưu vào database
 - Xử lý đặc biệt:
-  - Nếu có freeze available: Cho phép bỏ qua 1 ngày
   - Nếu có weekend mode: Không tính thứ 7, chủ nhật
 - Hiển thị streak:
   - Hiển thị số ngày hiện tại
@@ -263,7 +262,6 @@ Các bước:
   - Bật/tắt nhắc nhở hàng ngày
   - Chọn giờ nhắc nhở
   - Cài đặt weekend mode
-  - Quản lý freeze
 - Kết thúc: Cập nhật streak và thông báo
 
 ### 10. Activity Diagram - Lọc và tìm kiếm giao dịch

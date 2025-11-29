@@ -18,6 +18,10 @@ interface BottomSheetProps {
 	 */
 	height?: number | string;
 	showHandle?: boolean;
+	/**
+	 * zIndex để đẩy lên trên cùng khi mở từ modal khác
+	 */
+	zIndex?: number;
 }
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -30,6 +34,7 @@ export default function BottomSheet({
 	titleIcon,
 	height = 'auto',
 	showHandle = true,
+	zIndex = 1000,
 }: BottomSheetProps) {
 	const theme = useAppTheme();
 	const slideAnim = React.useRef(new Animated.Value(SCREEN_HEIGHT)).current;
@@ -133,7 +138,7 @@ export default function BottomSheet({
 		>
 			<KeyboardAvoidingView
 				behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-				style={styles.container}
+				style={[styles.container, { zIndex }]}
 			>
 				{/* Backdrop */}
 				<Animated.View
@@ -142,6 +147,7 @@ export default function BottomSheet({
 						{
 							opacity: backdropOpacity,
 							backgroundColor: 'rgba(0, 0, 0, 0.5)',
+							zIndex: zIndex,
 						},
 					]}
 				>
@@ -159,9 +165,9 @@ export default function BottomSheet({
 						{
 							backgroundColor: theme.colors.surface,
 							transform: [{ translateY: slideAnim }],
-
 							height: calculateHeight(),
 							maxHeight: calculateMaxHeight(),
+							zIndex: zIndex + 1,
 						},
 					]}
 				>

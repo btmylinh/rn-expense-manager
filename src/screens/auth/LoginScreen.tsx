@@ -1,10 +1,12 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { View, StyleSheet, KeyboardAvoidingView, Platform, Image } from 'react-native';
 import { Text, TextInput, Button, HelperText } from 'react-native-paper';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAppTheme } from '../../theme';
 import { useAuth } from '../../contexts/AuthContext';
 import { AuthStackParamList } from '../../navigators/AuthNavigator';
+import { getErrorMessage } from '../../utils/errorHandler';
+import { walletApi } from '../../api/walletApi';
 
 interface LoginScreenProps {
   navigation: NativeStackNavigationProp<AuthStackParamList, 'Login'>;
@@ -15,57 +17,95 @@ const isEmail = (v: string) => /.+@.+\..+/.test(v);
 export default function LoginScreen({ navigation }: LoginScreenProps) {
 	const theme = useAppTheme();
   const { login, isLoading } = useAuth();
-	// Dev mode: pre-fill credentials for faster testing
-	const [email, setEmail] = useState('newstart@test.com');
-  const [password, setPassword] = useState('123456');
+	const [email, setEmail] = useState('linhbuithimy14@gmail.com');
+  const [password, setPassword] = useState('12345Linh');
   const [showPassword, setShowPassword] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
+  const loginErrorRef = useRef<string | null>(null);
+  const isLoggingInRef = useRef(false);
 
   const emailError = useMemo(() => (email.length === 0 ? '' : isEmail(email) ? '' : 'Email không hợp lệ'), [email]);
   const passwordError = useMemo(() => (password.length === 0 ? '' : password.length < 6 ? 'Mật khẩu tối thiểu 6 ký tự' : ''), [password]);
 
+  useEffect(() => {
+    if (loginError) {
+      loginErrorRef.current = loginError;
+    }
+  }, [loginError]);
+
+  useEffect(() => {
+    if (!loginError && loginErrorRef.current && !isLoggingInRef.current) {
+      setLoginError(loginErrorRef.current);
+    }
+  }, [loginError, isLoading]);
   const handleLogin = async () => {
     setLoginError(null);
+    loginErrorRef.current = null;
+    isLoggingInRef.current = true;
     
     if (!email.trim() || !password.trim()) {
       setLoginError('Vui lòng nhập đầy đủ thông tin');
+      loginErrorRef.current = 'Vui lòng nhập đầy đủ thông tin';
+      isLoggingInRef.current = false;
       return;
     }
 
     if (emailError || passwordError) {
       setLoginError('Vui lòng kiểm tra lại thông tin');
+      loginErrorRef.current = 'Vui lòng kiểm tra lại thông tin';
+      isLoggingInRef.current = false;
       return;
     }
 
-    const result = await login(email.trim(), password);
+    try {
+      const result = await login(email.trim(), password);
+      isLoggingInRef.current = false;
     
-    if (result.success && result.requires2FA) {
-      // Chuyển đến màn hình nhập mã 2FA
-      const targetEmail = result.email || email.trim();
-      if (__DEV__) {
-        console.log('🔄 Attempting navigation to TwoFactorAuth with email:', targetEmail);
-      }
-      
-      // Sử dụng setTimeout để đảm bảo state đã được cập nhật
-      setTimeout(() => {
-        try {
-          if (__DEV__) {
-            console.log('🔄 Calling navigation.replace...');
-          }
-          navigation.replace('TwoFactorAuth', { email: targetEmail });
-        } catch (error) {
-          console.error('❌ Navigation error:', error);
-          // Fallback: thử navigate nếu replace thất bại
+      if (result.success && result.requires2FA) {
+        const targetEmail = result.email || email.trim();
+        setTimeout(() => {
           try {
-            navigation.navigate('TwoFactorAuth', { email: targetEmail });
-          } catch (navError) {
-            console.error('❌ Navigation.navigate also failed:', navError);
-            setLoginError('Không thể chuyển đến màn hình xác thực');
+            navigation.replace('TwoFactorAuth', { email: targetEmail });
+          } catch (error) {
+            try {
+              navigation.navigate('TwoFactorAuth', { email: targetEmail });
+            } catch (navError) {
+              setLoginError('Không thể chuyển đến màn hình xác thực');
+            }
           }
+        }, 100);
+      } else if (result.success) {
+        // Kiểm tra wallets sau khi đăng nhập thành công
+        try {
+          const walletsResponse = await walletApi.getWallets();
+          const walletsData = walletsResponse.data;
+          const wallets = walletsData?.data?.wallets || walletsData?.wallets || [];
+          
+          if (wallets.length === 0) {
+            // Chưa có ví, navigate đến Setup
+            setTimeout(() => {
+              navigation.replace('Setup');
+            }, 100);
+          }
+          // Nếu đã có ví, RootNavigator sẽ tự động navigate đến Tabs
+        } catch (error) {
+          console.error('Failed to check wallets:', error);
+          // Nếu lỗi, vẫn cho vào app (có thể check lại sau)
         }
+      } else if (!result.success) {
+        const errorMessage = result.message || 'Đăng nhập thất bại';
+        setTimeout(() => {
+          loginErrorRef.current = errorMessage;
+          setLoginError(errorMessage);
+        }, 100);
+      }
+    } catch (error) {
+      isLoggingInRef.current = false;
+      const errorMessage = getErrorMessage(error, 'Có lỗi xảy ra khi đăng nhập');
+      setTimeout(() => {
+        loginErrorRef.current = errorMessage;
+        setLoginError(errorMessage);
       }, 100);
-    } else if (!result.success) {
-      setLoginError(result.message || 'Đăng nhập thất bại');
     }
 	};
 
@@ -75,7 +115,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <View style={styles.content}>
-        {/* Logo/Icon Section */}
         <View style={styles.logoSection}>
           <View style={[styles.logoCircle, { backgroundColor: theme.colors.primary + '15' }]}>
             <Image
@@ -92,7 +131,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
           </Text>
         </View>
 
-        {/* Login Form */}
         <View style={styles.formContainer}>
 				<TextInput
 					label="Email"
@@ -134,11 +172,13 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
             Quên mật khẩu?
           </Button>
 
-          {loginError && (
-            <HelperText type="error" visible={!!loginError} style={{ textAlign: 'center', marginBottom: 8 }}>
-              {loginError}
-            </HelperText>
-          )}
+          {(loginError || loginErrorRef.current) ? (
+            <View style={[styles.errorBanner, { backgroundColor: theme.colors.errorContainer }]}>
+              <Text style={[styles.errorBannerText, { color: theme.colors.onErrorContainer }]}>
+                {loginError || loginErrorRef.current}
+              </Text>
+            </View>
+          ) : null}
 
           <Button
             mode="contained"
@@ -152,7 +192,6 @@ export default function LoginScreen({ navigation }: LoginScreenProps) {
           </Button>
         </View>
 
-        {/* Register Link */}
         <View style={styles.footer}>
           <Text style={[styles.footerText, { color: theme.colors.onSurfaceVariant }]}>
             Chưa có tài khoản?{' '}
@@ -232,5 +271,19 @@ const styles = StyleSheet.create({
   },
   footerText: {
     fontSize: 14,
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    minHeight: 48,
+  },
+  errorBannerText: {
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
   },
 });

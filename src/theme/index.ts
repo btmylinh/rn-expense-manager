@@ -114,7 +114,7 @@ export function getIconColor(iconName: string | undefined, theme: AppTheme): str
 	if (name.includes('shopping') || name.includes('cart') || name.includes('bag') || name.includes('shoe') || name.includes('tshirt') || name.includes('tag')) return '#EC4899';
 	if (name.includes('wallet') || name.includes('credit') || name.includes('bank') || name.includes('currency')) return theme.colors.primary;
 	if (name.includes('movie') || name.includes('gamepad') || name.includes('music') || name.includes('ticket') || name.includes('book')) return '#6366F1';
-	if (name.includes('heart') || name.includes('pill') || name.includes('hospital')) return theme.colors.error;
+	if (name.includes('heart') || name.includes('pill') || name.includes('hospital')  || name.includes('arrow-up-right')) return theme.colors.error;
 	if (name.includes('gift') || name.includes('party')) return '#F59E0B';
 	if (name.includes('dog') || name.includes('cat') || name.includes('leaf')) return '#10B981';
 	return theme.colors.primary;

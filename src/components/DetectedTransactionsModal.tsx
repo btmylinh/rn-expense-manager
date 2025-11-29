@@ -13,13 +13,13 @@ import { Button, Menu, Portal, Modal } from 'react-native-paper';
 import { useAppTheme, getIconColor } from '../theme';
 import { formatCurrency } from '../utils/format';
 import TransactionModal from './TransactionModal';
-import { fakeApi } from '../services/fakeApi';
+import { transactionApi } from '../api/transactionApi';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const MODAL_HEIGHT = SCREEN_HEIGHT * 0.8;
 
 interface DetectedTransaction {
-  id: number | string;
+  id: number;
   description: string;
   amount: number;
   categoryId: number;
@@ -110,7 +110,14 @@ export default function DetectedTransactionsModal({
 
       // If transaction has a real ID (not temp), update via API
       if (typeof editingTransaction.id === 'number') {
-        await fakeApi.updateTransaction(userId, editingTransaction.id, data);
+        await transactionApi.updateTransaction(editingTransaction.id, {
+          user_category_id: data.userCategoryId,
+          amount: Math.abs(data.amount),
+          type: data.type as 1 | 2,
+          transaction_date: data.transactionDate,
+          content: data.content,
+          wallet_id: walletId,
+        });
       }
 
       setShowEditModal(false);
@@ -168,7 +175,8 @@ export default function DetectedTransactionsModal({
             {transactions.map((transaction, index) => {
               const category = transaction.category || getCategoryById(transaction.categoryId);
               const categoryColor = getIconColor(category.icon, theme);
-              const expenseCategories = categories.filter(c => c.type === 2);
+              const isIncome = transaction.type === 1;
+              const amountColor = isIncome ? '#22C55E' : '#EF4444';
 
               return (
                 <TouchableOpacity
@@ -230,8 +238,9 @@ export default function DetectedTransactionsModal({
                       <MaterialCommunityIcons name="dots-vertical" size={20} color={theme.colors.onSurfaceVariant} />
                     </TouchableOpacity>
 
-                    <Text style={[styles.amountText, { color: theme.colors.error }]}>
-                      -{formatCurrency(Math.abs(transaction.amount))}
+                    <Text style={[styles.amountText, { color: amountColor }]}>
+                      {isIncome ? "+" : "-"}
+                      {formatCurrency(Math.abs(transaction.amount))}
                     </Text>
                   </View>
                 </TouchableOpacity>

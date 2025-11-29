@@ -4,12 +4,14 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { TextInput, Button, RadioButton, Snackbar } from 'react-native-paper';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../navigators/RootNavigator';
-import { fakeApi } from '../../services/fakeApi';
+import { budgetApi } from '../../api/budgetApi';
+import { walletApi } from '../../api/walletApi';
 import { useAppTheme, getIconColor } from '../../theme';
 import WalletSelectModal from '../../components/WalletSelectModal';
 import CategorySelectModal from '../../components/CategorySelectModal';
 import { DatePickerModal } from 'react-native-paper-dates';
 import AppBar from '../../components/AppBar';
+import { getErrorMessage } from '../../utils/errorHandler';
 
 // helper format yyyy-mm-dd
 function toLocalYMD(d: Date) {
@@ -64,14 +66,20 @@ export default function BudgetCreateScreen({ navigation, route }: Props) {
 	const [customRange, setCustomRange] = useState<{ startDate: Date | undefined, endDate: Date | undefined }>({ startDate: undefined, endDate: undefined });
 	const [saving, setSaving] = useState(false);
 	const [snack, setSnack] = useState<string>('');
-  const userId = 1;
+  // userId will be extracted from token via API
 	const theme = useAppTheme();
 
   useEffect(() => {
-		fakeApi.getWallets(userId).then((ws) => {
+		(async () => {
+			try {
+				const response = await walletApi.getWallets();
+				const ws = response.data?.wallets || [];
 			setWallets(ws);
 			if (!formBudget.walletId && ws[0]) setFormBudget((prev: any) => ({ ...prev, walletId: ws[0].id }));
-		});
+			} catch (error) {
+				console.error('Failed to load wallets:', error);
+			}
+		})();
     // eslint-disable-next-line
   }, []);
 
@@ -104,25 +112,22 @@ export default function BudgetCreateScreen({ navigation, route }: Props) {
 		setSaving(true);
 		try {
 			const payload = {
-				userCategoryId: formBudget.userCategoryId,
-				walletId: formBudget.walletId,
-				amount: formBudget.amount,
-				startDate: formBudget.startDate,
-				endDate: formBudget.endDate,
-				isRepeat: formBudget.repeat ? 1 : 0,
+				user_category_id: formBudget.userCategoryId,
+				wallet_id: formBudget.walletId,
+				amount: Number(formBudget.amount),
+				start_date: formBudget.startDate,
+				end_date: formBudget.endDate,
+				is_repeat: formBudget.repeat ? 1 : 0,
 			};
-			let res: any;
 			if (editMode && formBudget.id) {
-				res = await fakeApi.updateBudget(userId, formBudget.id, payload);
+				await budgetApi.updateBudget(formBudget.id, payload);
 			} else {
-				res = await fakeApi.createBudget(userId, payload as any);
+				await budgetApi.createBudget(payload);
 			}
-			if (!res || res.success === false) {
-				setSnack(res?.message || 'Lưu thất bại');
-			} else {
 				setSnack('Lưu thành công');
 				setTimeout(() => navigation.goBack(), 600);
-			}
+		} catch (error: any) {
+			setSnack(getErrorMessage(error, 'Lưu thất bại'));
 		} finally {
 			setSaving(false);
 		}
@@ -219,7 +224,15 @@ export default function BudgetCreateScreen({ navigation, route }: Props) {
 				{editMode && (
 					<Button
 						mode="text"
-						onPress={async () => { if (!formBudget.id) return; await fakeApi.deleteBudget(userId, formBudget.id); navigation.goBack(); }}
+						onPress={async () => { 
+							if (!formBudget.id) return; 
+							try {
+								await budgetApi.deleteBudget(formBudget.id);
+								navigation.goBack();
+							} catch (error: any) {
+								setSnack(getErrorMessage(error, 'Không thể xóa ngân sách'));
+							}
+						}}
 						style={styles.deleteWrap}
 						labelStyle={{ fontSize: 15 }}
 					>
@@ -234,7 +247,11 @@ export default function BudgetCreateScreen({ navigation, route }: Props) {
 				wallets={wallets}
 				selectedWalletId={formBudget.walletId}
 				onDismiss={() => setShowWalletMenu(false)}
-				onSelect={(id) => { setFormBudget((prev: any) => ({ ...prev, walletId: id })); setShowWalletMenu(false); }}
+				onSelect={(id) => {
+					if (id == null) return;
+					setFormBudget((prev: any) => ({ ...prev, walletId: id }));
+					setShowWalletMenu(false);
+				}}
 				title="Chọn ví"
 			/>
 

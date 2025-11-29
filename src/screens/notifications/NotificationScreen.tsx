@@ -111,12 +111,12 @@ export default function NotificationScreen({ navigation }: NotificationScreenPro
             <View style={styles.leftSection}>
               <View style={[
                 styles.iconContainer,
-                { backgroundColor: getColorForType(item.type) + '20' }
+                { backgroundColor: getColorForType(item.type || NotificationType.TRANSACTION_REMINDER) + '20' }
               ]}>
                 <MaterialCommunityIcons
-                  name={getIconForType(item.type) as any}
+                  name={getIconForType(item.type || NotificationType.TRANSACTION_REMINDER) as any}
                   size={20}
-                  color={getColorForType(item.type)}
+                  color={getColorForType(item.type || NotificationType.TRANSACTION_REMINDER)}
                 />
               </View>
               <View style={styles.contentSection}>
