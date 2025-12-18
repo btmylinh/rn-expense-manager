@@ -1,13 +1,14 @@
-import React from 'react';
-import { ScrollView, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ScrollView, View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { useAppTheme } from '../theme';
 import { formatCurrency } from '../utils/format';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import BottomSheet from './BottomSheet';
+import { walletApi } from '../api/walletApi';
+import { useAuth } from '../contexts/AuthContext';
 
 interface WalletSelectModalProps {
 	visible: boolean;
-	wallets: Array<{ id: number; name: string; amount?: number; currency?: string }>;
 	selectedWalletId?: number | null;
 	onDismiss: () => void;
 	onSelect: (id: number | null) => void;
@@ -20,7 +21,6 @@ interface WalletSelectModalProps {
 
 export default function WalletSelectModal({
 	visible,
-	wallets,
 	selectedWalletId = null,
 	onDismiss,
 	onSelect,
@@ -31,6 +31,55 @@ export default function WalletSelectModal({
 	showBalance = true,
 }: WalletSelectModalProps) {
 	const theme = useAppTheme();
+	const { user } = useAuth();
+	const [wallets, setWallets] = useState<Array<{ id: number; name: string; amount?: number; currency?: string }>>([]);
+	const [loading, setLoading] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+
+	useEffect(() => {
+		if (visible && user?.id) {
+			loadWallets();
+		} else if (!visible) {
+			// Reset state when modal closes
+			setWallets([]);
+			setError(null);
+		}
+	}, [visible, user?.id]);
+
+	const loadWallets = async () => {
+		if (!user?.id) {
+			setError('Chưa đăng nhập');
+			return;
+		}
+
+		try {
+			setLoading(true);
+			setError(null);
+			const response = await walletApi.getWallets();
+			
+			// Handle different response formats
+			const walletsData = response.data?.wallets || response.data?.data?.wallets || response.data || [];
+			
+			if (!Array.isArray(walletsData)) {
+				console.warn('[WalletSelectModal] Invalid wallets data format:', walletsData);
+				setWallets([]);
+				setError('Định dạng dữ liệu không hợp lệ');
+				return;
+			}
+
+			setWallets(walletsData);
+			
+			if (walletsData.length === 0) {
+				setError(null); // Empty is OK, not an error
+			}
+		} catch (error: any) {
+			console.error('[WalletSelectModal] Error loading wallets:', error);
+			setWallets([]);
+			setError('Không thể tải danh sách ví. Vui lòng thử lại.');
+		} finally {
+			setLoading(false);
+		}
+	};
 
 	const handleSelect = (walletId: number | null) => {
 		onSelect(walletId);
@@ -47,7 +96,32 @@ export default function WalletSelectModal({
 			zIndex={10000}
 		>
 			<ScrollView style={styles.scrollView} contentContainerStyle={styles.contentContainer}>
-				{allowNone && (
+				{loading ? (
+					<View style={styles.loadingContainer}>
+						<ActivityIndicator size="large" color={theme.colors.primary} />
+						<Text style={[styles.loadingText, { color: theme.colors.onSurfaceVariant }]}>
+							Đang tải danh sách ví...
+						</Text>
+					</View>
+				) : error ? (
+					<View style={styles.emptyContainer}>
+						<MaterialCommunityIcons
+							name="alert-circle-outline"
+							size={48}
+							color={theme.colors.error}
+							style={{ marginBottom: 12 }}
+						/>
+						<Text style={[styles.emptyText, { color: theme.colors.error }]}>{error}</Text>
+						<TouchableOpacity
+							onPress={loadWallets}
+							style={[styles.retryButton, { backgroundColor: theme.colors.primaryContainer, marginTop: 16 }]}
+						>
+							<Text style={[styles.retryButtonText, { color: theme.colors.primary }]}>Thử lại</Text>
+						</TouchableOpacity>
+					</View>
+				) : (
+					<>
+						{allowNone && (
 					<TouchableOpacity
 						style={[
 							styles.walletItem,
@@ -105,7 +179,7 @@ export default function WalletSelectModal({
 					</TouchableOpacity>
 				)}
 
-				{wallets.length === 0 ? (
+				{wallets.length === 0 && !loading && !error ? (
 					<View style={styles.emptyContainer}>
 						<MaterialCommunityIcons
 							name="wallet-outline"
@@ -141,6 +215,8 @@ export default function WalletSelectModal({
 						</TouchableOpacity>
 					))
 				)}
+					</>
+				)}
 			</ScrollView>
 		</BottomSheet>
 	);
@@ -161,6 +237,15 @@ const styles = StyleSheet.create({
 	},
 	emptyText: {
 		fontSize: 15,
+	},
+	loadingContainer: {
+		alignItems: 'center',
+		justifyContent: 'center',
+		paddingVertical: 48,
+	},
+	loadingText: {
+		fontSize: 14,
+		marginTop: 12,
 	},
 	walletItem: {
 		flexDirection: 'row',
@@ -195,5 +280,16 @@ const styles = StyleSheet.create({
 	},
 	walletAmount: {
 		fontSize: 14,
+	},
+	retryButton: {
+		paddingVertical: 10,
+		paddingHorizontal: 20,
+		borderRadius: 8,
+		alignItems: 'center',
+		justifyContent: 'center',
+	},
+	retryButtonText: {
+		fontSize: 14,
+		fontWeight: '600',
 	},
 });

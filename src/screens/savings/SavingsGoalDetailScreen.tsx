@@ -14,7 +14,7 @@ import { transactionApi } from '../../api/transactionApi';
 import AppBar from '../../components/AppBar';
 import WalletSelectModal from '../../components/WalletSelectModal';
 import { getErrorMessage } from '../../utils/errorHandler';
-import { triggerStreakActivity } from '../../utils/streakHelpers';
+// Trigger tự động xử lý streak khi có transaction, không cần import triggerStreakActivity
 import { TRANSFER_CATEGORY, getTodayDate } from '../../common/transactionCategories';
 
 type SavingsGoalDetailRouteProp = RouteProp<RootStackParamList, 'SavingsGoalDetail'>;
@@ -31,6 +31,9 @@ export default function SavingsGoalDetailScreen() {
 	// State
 	const [goal, setGoal] = useState<any>(null);
 	const [contributions, setContributions] = useState<any[]>([]);
+	const [contributionsPage, setContributionsPage] = useState(1);
+	const [contributionsTotal, setContributionsTotal] = useState(0);
+	const [loadingContributions, setLoadingContributions] = useState(false);
 	const [loading, setLoading] = useState(true);
 	const [addMoneyModalVisible, setAddMoneyModalVisible] = useState(false);
 	const [celebrationModalVisible, setCelebrationModalVisible] = useState(false);
@@ -41,6 +44,10 @@ export default function SavingsGoalDetailScreen() {
 	const [wallets, setWallets] = useState<any[]>([]);
 	const [showWalletDropdown, setShowWalletDropdown] = useState(false);
 	const [snackMessage, setSnackMessage] = useState('');
+	
+	const isErrorSnack =
+		snackMessage.startsWith('Không thể') ||
+		snackMessage.startsWith('Có lỗi');
 
 	// Load goal details
 	const loadGoalDetail = async () => {
@@ -57,10 +64,8 @@ export default function SavingsGoalDetailScreen() {
 					createdAt: goalData.created_at,
 				};
 				setGoal(mappedGoal);
-				setContributions((goalData.savings_goal_contributions || []).map((c: any) => ({
-					...c,
-					createdAt: c.created_at,
-				})));
+				// Load contributions riêng với pagination
+				await loadContributions(1);
 			} else {
 				setSnackMessage('Không thể tải thông tin mục tiêu');
 			}
@@ -69,6 +74,34 @@ export default function SavingsGoalDetailScreen() {
 			setSnackMessage(getErrorMessage(error, 'Có lỗi xảy ra khi tải dữ liệu'));
 		} finally {
 			setLoading(false);
+		}
+	};
+
+	// Load contributions with pagination
+	const loadContributions = async (page: number = 1) => {
+		try {
+			setLoadingContributions(true);
+			const response = await savingsGoalApi.getContributions(goalId, { page, limit: 20 });
+			const data = response.data?.data;
+			if (data) {
+				const mappedContributions = (data.contributions || []).map((c: any) => ({
+					...c,
+					createdAt: c.created_at,
+				}));
+				
+				if (page === 1) {
+					setContributions(mappedContributions);
+				} else {
+					setContributions(prev => [...prev, ...mappedContributions]);
+				}
+				setContributionsTotal(data.pagination?.total || 0);
+				setContributionsPage(page);
+			}
+		} catch (error: any) {
+			console.warn('Error loading contributions:', error);
+			setSnackMessage(getErrorMessage(error, 'Không thể tải lịch sử đóng góp'));
+		} finally {
+			setLoadingContributions(false);
 		}
 	};
 
@@ -90,8 +123,9 @@ export default function SavingsGoalDetailScreen() {
 					setSelectedWalletId(defaultWallet.id);
 				}
 			}
-		} catch (error) {
-			console.error('Error loading wallets:', error);
+		} catch (error: any) {
+			console.warn('Error loading wallets:', error);
+			setSnackMessage(getErrorMessage(error, 'Không thể tải danh sách ví'));
 		}
 	};
 
@@ -104,6 +138,20 @@ export default function SavingsGoalDetailScreen() {
 	const getProgressInfo = () => {
 		if (!goal) return null;
 
+		// Guard: nếu targetAmount không hợp lệ, bỏ phần dự đoán
+		if (!goal.targetAmount || goal.targetAmount <= 0) {
+			return {
+				progress: 0,
+				remaining: 0,
+				remainingDays: 0,
+				progressDifference: 0,
+				predictionText: '',
+				predictionIcon: 'trending-up',
+				predictionColor: '#22c55e',
+				isOnTrack: true,
+			};
+		}
+
 		const progress = (goal.currentAmount / goal.targetAmount) * 100;
 		const remaining = goal.targetAmount - goal.currentAmount;
 		
@@ -113,6 +161,32 @@ export default function SavingsGoalDetailScreen() {
 		const totalDays = Math.ceil((deadlineDate.getTime() - new Date(goal.createdAt).getTime()) / (1000 * 60 * 60 * 24));
 		const remainingDays = Math.ceil((deadlineDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 		const elapsedDays = totalDays - remainingDays;
+
+		// Guard: nếu tổng số ngày <= 0 thì không tính dự đoán chi tiết
+		if (totalDays <= 0) {
+			let predictionText = '';
+			let predictionIcon = 'alert-circle';
+			let predictionColor = '#ef4444';
+
+			if (goal.status === 'completed') {
+				predictionText = 'Chúc mừng! Bạn đã đạt mục tiêu này.';
+				predictionIcon = 'trophy';
+				predictionColor = '#22c55e';
+			} else {
+				predictionText = 'Deadline đã qua, bạn nên gia hạn hoặc chỉnh sửa lại mục tiêu.';
+			}
+
+			return {
+				progress: Math.min(progress, 100),
+				remaining,
+				remainingDays,
+				progressDifference: 0,
+				predictionText,
+				predictionIcon,
+				predictionColor,
+				isOnTrack: false,
+			};
+		}
 		
 		// Calculate expected progress
 		const expectedProgress = elapsedDays > 0 ? (elapsedDays / totalDays) * 100 : 0;
@@ -196,7 +270,7 @@ export default function SavingsGoalDetailScreen() {
 				amount,
 				note: finalNote || undefined
 			});
-			await triggerStreakActivity('savings_contribution');
+			// Trigger tự động xử lý streak khi có transaction, không cần gọi API activate
 			
 			// If wallet is selected, create a savings transaction
 			if (selectedWalletId) {
@@ -243,10 +317,8 @@ export default function SavingsGoalDetailScreen() {
 					createdAt: reloadedGoalData.created_at,
 				};
 				setGoal(mappedGoal);
-				setContributions((reloadedGoalData.savings_goal_contributions || []).map((c: any) => ({
-					...c,
-					createdAt: c.created_at,
-				})));
+				// Reload contributions để có dữ liệu mới nhất
+				await loadContributions(1);
 			
 			// Check if goal is completed
 				const progress = (mappedGoal.currentAmount / mappedGoal.targetAmount) * 100;
@@ -404,22 +476,7 @@ export default function SavingsGoalDetailScreen() {
 						<Card.Content style={styles.statContent}>
 							<MaterialCommunityIcons name="cash-minus" size={24} color={theme.colors.primary} />
 							<Text style={[styles.statValue, { color: theme.colors.onSurface }]}>
-								{formatCurrency(progressInfo?.remaining || 0)}
-							</Text>
-							<Text style={[styles.statLabel, { color: theme.colors.onSurfaceVariant }]}>
-								Còn thiếu
-							</Text>
-						</Card.Content>
-					</Card>
-					
-					<Card style={[styles.statCard, { backgroundColor: theme.colors.surface }]}>
-						<Card.Content style={styles.statContent}>
-							<MaterialCommunityIcons name="chart-line" size={24} color={theme.colors.primary} />
-							<Text style={[styles.statValue, { color: theme.colors.onSurface }]}>
-								{Math.round(progressInfo?.progress || 0)}%
-							</Text>
-							<Text style={[styles.statLabel, { color: theme.colors.onSurfaceVariant }]}>
-								Tiến độ
+								Còn thiếu: {formatCurrency(progressInfo?.remaining || 0)}
 							</Text>
 						</Card.Content>
 					</Card>
@@ -462,10 +519,10 @@ export default function SavingsGoalDetailScreen() {
 				<Card style={[styles.historyCard, { backgroundColor: theme.colors.surface }]}>
 					<Card.Content>
 						<Text style={[styles.sectionTitle, { color: theme.colors.onSurface }]}>
-							Lịch sử đóng góp
+							Lịch sử đóng góp {contributionsTotal > 0 && `(${contributionsTotal})`}
 						</Text>
 						
-						{contributions.length === 0 ? (
+						{contributions.length === 0 && !loadingContributions ? (
 							<View style={styles.emptyHistory}>
 								<MaterialCommunityIcons
 									name="piggy-bank-outline"
@@ -500,6 +557,18 @@ export default function SavingsGoalDetailScreen() {
 									)}
 								</View>
 							))
+						)}
+						
+						{/* Load More Button */}
+						{contributions.length > 0 && contributions.length < contributionsTotal && (
+							<Button
+								mode="outlined"
+								onPress={() => loadContributions(contributionsPage + 1)}
+								loading={loadingContributions}
+								style={styles.loadMoreButton}
+							>
+								Xem thêm ({contributionsTotal - contributions.length} còn lại)
+							</Button>
 						)}
 					</Card.Content>
 				</Card>
@@ -658,7 +727,6 @@ export default function SavingsGoalDetailScreen() {
 
 		<WalletSelectModal
 				visible={showWalletDropdown}
-			wallets={wallets}
 			selectedWalletId={selectedWalletId}
 				onDismiss={() => setShowWalletDropdown(false)}
 			onSelect={(walletId) => {
@@ -675,8 +743,21 @@ export default function SavingsGoalDetailScreen() {
 			visible={!!snackMessage}
 			onDismiss={() => setSnackMessage('')}
 			duration={3000}
+			style={{
+				backgroundColor: isErrorSnack
+					? theme.colors.errorContainer
+					: theme.colors.primaryContainer,
+			}}
 		>
-			{snackMessage}
+			<Text
+				style={{
+					color: isErrorSnack
+						? theme.colors.onErrorContainer
+						: theme.colors.onPrimaryContainer,
+				}}
+			>
+				{snackMessage}
+			</Text>
 		</Snackbar>
 		</View>
 	);
@@ -853,6 +934,9 @@ const styles = StyleSheet.create({
 	contributionNote: {
 		fontSize: 14,
 		fontStyle: 'italic',
+	},
+	loadMoreButton: {
+		marginTop: 16,
 	},
 	
 	// Action Buttons

@@ -42,6 +42,8 @@ export function useRecurringExpenseReminders() {
 
 			const expenses = response.data?.data?.expenses || [];
 			const now = new Date();
+			// Set time to start of day để so sánh chính xác
+			now.setHours(0, 0, 0, 0);
 			const upcomingReminders: RecurringExpenseReminder[] = [];
 
 			// Calculate reminders for each active expense
@@ -49,27 +51,54 @@ export function useRecurringExpenseReminders() {
 				if (!expense.next_due_date) return;
 
 				const dueDate = new Date(expense.next_due_date);
+				// Set time to start of day để so sánh chính xác
+				dueDate.setHours(0, 0, 0, 0);
 				const diffTime = dueDate.getTime() - now.getTime();
-				const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+				// Math.floor để trong ngày tới hạn (diffDays = 0) được tính là "tới hạn", không phải "quá hạn"
+				const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
 
-				// Check if within reminder window (0 to reminder_days_before)
-				const reminderDaysBefore = expense.reminder_days_before ?? 1;
-				if (diffDays >= 0 && diffDays <= reminderDaysBefore) {
-					upcomingReminders.push({
-						expense: {
-							id: expense.id,
-							name: expense.name,
-							amount: Number(expense.amount),
-							user_category_id: expense.user_category_id,
-							wallet_id: expense.wallet_id,
-							frequency: expense.frequency,
-							next_due_date: expense.next_due_date,
-							reminder_days_before: expense.reminder_days_before,
-							note: expense.note,
-							is_active: expense.is_active,
-						},
-						daysUntilDue: diffDays,
-					});
+				// Với frequency = "daily": Chỉ hiển thị khi đúng ngày (diffDays = 0) hoặc quá hạn (diffDays < 0)
+				// Không hiển thị "sắp đến hạn" vì nó lặp lại mỗi ngày
+				if (expense.frequency === 'daily') {
+					// Chỉ hiển thị khi đúng ngày hoặc quá hạn
+					if (diffDays <= 0) {
+						upcomingReminders.push({
+							expense: {
+								id: expense.id,
+								name: expense.name,
+								amount: Number(expense.amount),
+								user_category_id: expense.user_category_id,
+								wallet_id: expense.wallet_id,
+								frequency: expense.frequency,
+								next_due_date: expense.next_due_date,
+								reminder_days_before: expense.reminder_days_before,
+								note: expense.note,
+								is_active: expense.is_active,
+							},
+							daysUntilDue: diffDays,
+						});
+					}
+				} else {
+					// Với weekly/monthly/yearly: Hiển thị theo reminder window
+					// Check if within reminder window (0 = tới hạn trong ngày, > 0 = sắp tới hạn, < 0 = quá hạn)
+					const reminderDaysBefore = expense.reminder_days_before ?? 1;
+					if (diffDays <= reminderDaysBefore) {
+						upcomingReminders.push({
+							expense: {
+								id: expense.id,
+								name: expense.name,
+								amount: Number(expense.amount),
+								user_category_id: expense.user_category_id,
+								wallet_id: expense.wallet_id,
+								frequency: expense.frequency,
+								next_due_date: expense.next_due_date,
+								reminder_days_before: expense.reminder_days_before,
+								note: expense.note,
+								is_active: expense.is_active,
+							},
+							daysUntilDue: diffDays,
+						});
+					}
 				}
 			});
 

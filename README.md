@@ -1,6 +1,10 @@
 ﻿# React Native Expense Manager - Frontend
 cd rn-expense-manager 
 npm run start
+
+cd rn-expense-manager 
+npm run android
+npx expo start --android
 Ứng dụng quản lý chi tiêu di động được xây dựng với React Native, Expo, TypeScript.
 
 ## 📁 Cấu trúc thư mục
@@ -158,7 +162,12 @@ expo build:ios
 - ✅ Danh mục tùy chỉnh
 - ✅ Ngân sách theo danh mục
 - ✅ Mục tiêu tiết kiệm
-- ✅ Chi phí định kỳ
+- ✅ Chi tiêu định kỳ (Recurring Expenses)
+  - CRUD chi tiêu định kỳ (thêm, sửa, xóa, bật/tắt)
+  - AI phát hiện pattern từ lịch sử giao dịch
+  - Dự báo chi tiêu tháng sau
+  - Nhắc nhở chi tiêu sắp đến hạn/quá hạn
+  - Widget hiển thị trên Dashboard
 
 ### Thống kê & Báo cáo
 - ✅ Dashboard tổng quan
@@ -181,9 +190,10 @@ expo build:ios
 
 ### Notifications
 - ✅ Thông báo ngân sách
-- ✅ Nhắc nhở chi phí định kỳ
+- ✅ Nhắc nhở chi tiêu định kỳ (sắp đến hạn/quá hạn)
 - ✅ Thông báo streak
 - ✅ Cảnh báo tài chính
+- ✅ Badge cảnh báo trên Dashboard cho chi tiêu định kỳ
 
 ## 🛠️ Công nghệ sử dụng
 

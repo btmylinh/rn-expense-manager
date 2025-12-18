@@ -19,6 +19,7 @@ export enum NotificationType {
   BUDGET_WARNING = 'budget_warning',
   LARGE_TRANSACTION = 'large_transaction',
   TRANSACTION_REMINDER = 'transaction_reminder',
+  RECURRING_EXPENSE_REMINDER = 'recurring_expense_reminder',
   WEEKLY_REPORT = 'weekly_report',
   GOAL_ACHIEVED = 'goal_achieved',
   SYNC_COMPLETE = 'sync_complete',

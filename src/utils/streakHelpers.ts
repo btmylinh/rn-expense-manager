@@ -1,4 +1,5 @@
 import { streakApi } from '../api/streakApi';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export enum StreakState {
   NEW_START = 'new_start',

@@ -6,7 +6,7 @@ export interface RecurringExpensePayload {
 	user_category_id: number;
 	wallet_id: number;
 	frequency: string;
-	start_date: string;
+	start_date?: string; // Optional - backend không sử dụng field này
 	end_date?: string;
 	is_active?: number;
 	notes?: string;

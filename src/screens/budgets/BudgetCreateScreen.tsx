@@ -20,9 +20,10 @@ function toLocalYMD(d: Date) {
 	const day = d.getDate().toString().padStart(2, '0');
 	return `${y}-${m}-${day}`;
 }
-function formatVN(dateStr: string) {
-	const d = new Date(dateStr);
-	return `${d.getDate().toString().padStart(2,'0')}/${(d.getMonth()+1).toString().padStart(2,'0')}`;
+function formatVN(dateStr: string | Date) {
+	const d = typeof dateStr === 'string' ? new Date(dateStr) : dateStr;
+	if (isNaN(d.getTime())) return dateStr.toString(); // Invalid date, return original
+	return `${d.getDate().toString().padStart(2,'0')}/${(d.getMonth()+1).toString().padStart(2,'0')}/${d.getFullYear()}`;
 }
 
 function getCurrentPeriods() {
@@ -56,7 +57,14 @@ type Props = NativeStackScreenProps<RootStackParamList, 'BudgetCreate'>;
 
 export default function BudgetCreateScreen({ navigation, route }: Props) {
   const { categories, budget, editMode } = route.params;
-	const [formBudget, setFormBudget] = useState<any>(budget || {});
+	// Initialize formBudget with budget from params, ensuring walletId is properly set
+	const [formBudget, setFormBudget] = useState<any>({
+		...budget,
+		walletId: budget?.walletId || budget?.wallet_id || undefined,
+		userCategoryId: budget?.userCategoryId || budget?.user_category_id || undefined,
+		startDate: budget?.startDate || budget?.start_date || undefined,
+		endDate: budget?.endDate || budget?.end_date || undefined,
+	});
   const [wallets, setWallets] = useState<any[]>([]);
   const [showWalletMenu, setShowWalletMenu] = useState(false);
   const [showCategoryMenu, setShowCategoryMenu] = useState(false);
@@ -69,15 +77,63 @@ export default function BudgetCreateScreen({ navigation, route }: Props) {
   // userId will be extracted from token via API
 	const theme = useAppTheme();
 
+  // Extract wallets from response (handle different response formats)
+  const extractWallets = (response: any) => {
+    const root = response?.data ?? response;
+    const list =
+      root?.data?.wallets ??
+      root?.data?.data?.wallets ??
+      root?.wallets ??
+      root?.data ??
+      [];
+
+    if (!Array.isArray(list)) return [];
+    return list.map((wallet: any) => ({
+      ...wallet,
+      amount: Number(wallet.amount ?? 0),
+      currency: wallet.currency || 'VND',
+    }));
+  };
+
   useEffect(() => {
 		(async () => {
 			try {
 				const response = await walletApi.getWallets();
-				const ws = response.data?.wallets || [];
-			setWallets(ws);
-			if (!formBudget.walletId && ws[0]) setFormBudget((prev: any) => ({ ...prev, walletId: ws[0].id }));
+				const ws = extractWallets(response);
+				
+				console.log('[BudgetCreateScreen] Wallets loaded:', ws.length, 'wallets');
+				
+				setWallets(ws);
+				
+				// If walletId is already set (from route params or edit mode), keep it
+				if (formBudget.walletId) {
+					// Verify the wallet exists in the list
+					const walletExists = ws.find((w: any) => w.id === formBudget.walletId);
+					if (!walletExists) {
+						// If wallet doesn't exist, reset it
+						setFormBudget((prev: any) => ({ ...prev, walletId: undefined }));
+					}
+				}
+				
+				// Auto-select default wallet or first wallet if not already set
+				if (!formBudget.walletId && ws.length > 0) {
+					// Try to find default wallet first
+					const defaultWallet = ws.find((w: any) => w.is_default === 1 || w.is_default === true);
+					const selectedWalletId = defaultWallet?.id || ws[0].id;
+					console.log('[BudgetCreateScreen] Auto-selecting wallet:', selectedWalletId);
+					setFormBudget((prev: any) => ({ ...prev, walletId: selectedWalletId }));
+				}
+				
+				// Only warn if no wallets available AND we're not editing (and don't spam the snack)
+				if (ws.length === 0 && !editMode) {
+					// Delay the snack a bit to avoid showing it immediately on mount
+					setTimeout(() => {
+						setSnack('Bạn cần tạo ít nhất một ví trước khi tạo ngân sách');
+					}, 500);
+				}
 			} catch (error) {
-				console.error('Failed to load wallets:', error);
+				console.error('[BudgetCreateScreen] Failed to load wallets:', error);
+				setSnack('Không thể tải danh sách ví. Vui lòng thử lại.');
 			}
 		})();
     // eslint-disable-next-line
@@ -107,25 +163,111 @@ export default function BudgetCreateScreen({ navigation, route }: Props) {
 
 	const canRepeat = tempRangeType !== 'custom' && !!formBudget.startDate && !!formBudget.endDate;
 
+	// Validation helper functions
+	const validateForm = (): string | null => {
+		// Validate category
+		if (!formBudget.userCategoryId || typeof formBudget.userCategoryId !== 'number' || formBudget.userCategoryId <= 0) {
+			return 'Vui lòng chọn danh mục';
+		}
+
+		// Validate wallet
+		if (!formBudget.walletId || typeof formBudget.walletId !== 'number' || formBudget.walletId <= 0) {
+			return 'Vui lòng chọn ví';
+		}
+
+		// Validate amount
+		if (!formBudget.amount) {
+			return 'Vui lòng nhập số tiền ngân sách';
+		}
+
+		const amount = Number(formBudget.amount);
+		if (isNaN(amount) || amount <= 0) {
+			return 'Số tiền ngân sách phải lớn hơn 0';
+		}
+
+		// Max amount: 99999999.99
+		const maxAmount = 99999999.99;
+		if (amount > maxAmount) {
+			return `Số tiền không được vượt quá ${maxAmount.toLocaleString('vi-VN')}`;
+		}
+
+		// Check decimal places (max 2)
+		const amountStr = amount.toString();
+		const decimalIndex = amountStr.indexOf('.');
+		if (decimalIndex !== -1) {
+			const decimalPlaces = amountStr.length - decimalIndex - 1;
+			if (decimalPlaces > 2) {
+				return 'Số tiền chỉ được có tối đa 2 chữ số thập phân';
+			}
+		}
+
+		// Validate dates
+		if (!formBudget.startDate) {
+			return 'Vui lòng chọn ngày bắt đầu';
+		}
+
+		if (!formBudget.endDate) {
+			return 'Vui lòng chọn ngày kết thúc';
+		}
+
+		// Validate date format and range
+		const startDate = new Date(formBudget.startDate);
+		const endDate = new Date(formBudget.endDate);
+
+		if (isNaN(startDate.getTime())) {
+			return 'Ngày bắt đầu không hợp lệ';
+		}
+
+		if (isNaN(endDate.getTime())) {
+			return 'Ngày kết thúc không hợp lệ';
+		}
+
+		if (endDate < startDate) {
+			return 'Ngày kết thúc phải lớn hơn hoặc bằng ngày bắt đầu';
+		}
+
+		// Check if date range is not too long (max 10 years)
+		const diffTime = endDate.getTime() - startDate.getTime();
+		const diffDays = diffTime / (1000 * 60 * 60 * 24);
+		const maxDays = 365 * 10; // 10 years
+
+		if (diffDays > maxDays) {
+			return 'Khoảng thời gian không được vượt quá 10 năm';
+		}
+
+		return null; // Validation passed
+	};
+
 	async function handleSave() {
-		if (!formBudget.userCategoryId || !formBudget.amount || !formBudget.startDate || !formBudget.endDate || !formBudget.walletId) return;
+		// Validate form
+		const validationError = validateForm();
+		if (validationError) {
+			setSnack(validationError);
+			return;
+		}
+		
 		setSaving(true);
 		try {
+			const amount = Number(formBudget.amount);
+			// Round to 2 decimal places if needed
+			const roundedAmount = Math.round(amount * 100) / 100;
+
 			const payload = {
 				user_category_id: formBudget.userCategoryId,
 				wallet_id: formBudget.walletId,
-				amount: Number(formBudget.amount),
+				amount: roundedAmount,
 				start_date: formBudget.startDate,
 				end_date: formBudget.endDate,
 				is_repeat: formBudget.repeat ? 1 : 0,
 			};
+
 			if (editMode && formBudget.id) {
 				await budgetApi.updateBudget(formBudget.id, payload);
 			} else {
 				await budgetApi.createBudget(payload);
 			}
-				setSnack('Lưu thành công');
-				setTimeout(() => navigation.goBack(), 600);
+			setSnack('Lưu thành công');
+			setTimeout(() => navigation.goBack(), 600);
 		} catch (error: any) {
 			setSnack(getErrorMessage(error, 'Lưu thất bại'));
 		} finally {
@@ -185,7 +327,9 @@ export default function BudgetCreateScreen({ navigation, route }: Props) {
 				<TouchableOpacity style={[styles.listItem, { backgroundColor: theme.colors.surface }]} onPress={() => setShowRangeSheet(true)}>
 					<MaterialCommunityIcons name="calendar-month-outline" size={22} color={theme.colors.onSurfaceVariant} />
 					<Text style={[styles.listItemText, { color: theme.colors.onSurface }]}>
-						{formBudget.startDate && formBudget.endDate ? `${formBudget.startDate} - ${formBudget.endDate}` : 'Chọn khoảng thời gian'}
+						{formBudget.startDate && formBudget.endDate 
+							? `${formatVN(formBudget.startDate)} - ${formatVN(formBudget.endDate)}` 
+							: 'Chọn khoảng thời gian'}
 					</Text>
 					<MaterialCommunityIcons name="chevron-right" size={22} color={theme.colors.onSurfaceVariant} style={{ marginLeft: 'auto' }} />
 				</TouchableOpacity>
@@ -244,7 +388,6 @@ export default function BudgetCreateScreen({ navigation, route }: Props) {
 			{/* Bottom sheet chọn ví */}
 			<WalletSelectModal
 				visible={showWalletMenu}
-				wallets={wallets}
 				selectedWalletId={formBudget.walletId}
 				onDismiss={() => setShowWalletMenu(false)}
 				onSelect={(id) => {

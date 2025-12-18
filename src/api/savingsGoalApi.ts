@@ -37,8 +37,8 @@ export const savingsGoalApi = {
 	createContribution(goalId: number, payload: ContributionPayload) {
 		return apiClient.post(`/savings-goals/${goalId}/contributions`, payload);
 	},
-	getContributions(goalId: number) {
-		return apiClient.get(`/savings-goals/${goalId}/contributions`);
+	getContributions(goalId: number, params?: Record<string, any>) {
+		return apiClient.get(`/savings-goals/${goalId}/contributions`, { params });
 	},
 };
 

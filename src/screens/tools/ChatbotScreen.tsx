@@ -1,365 +1,516 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Button, IconButton, Text, TextInput } from 'react-native-paper';
-import { Alert, FlatList, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
-import AppBar from '../../components/AppBar';
+import React, { useEffect, useState, useRef } from 'react';
+import {
+	View,
+	Text,
+	TextInput,
+	TouchableOpacity,
+	ScrollView,
+	StyleSheet,
+	KeyboardAvoidingView,
+	Platform,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppTheme } from '../../theme';
-import { useAuth } from '../../contexts/AuthContext';
+import { useNavigation } from '@react-navigation/native';
 import { chatApi } from '../../api/chatApi';
+import { Snackbar, ActivityIndicator } from 'react-native-paper';
+import AppBar from '../../components/AppBar';
+import { getErrorMessage } from '../../utils/errorHandler';
 
-type ChatRole = 'user' | 'assistant' | 'system';
-
-interface ChatMessage {
+interface Message {
 	id: string;
-	userId: number;
-	role: ChatRole;
+	role: 'user' | 'assistant';
 	content: string;
-	createdAt: string;
-	metadata?: Record<string, unknown>;
+	created_at: string;
 }
 
-interface ChatResponse {
-	userMessage: ChatMessage;
-	assistantMessage: ChatMessage;
-	suggestions?: string[];
-	context?: Record<string, unknown>;
-}
-
-interface ChatFaq {
+interface FAQ {
 	id: string;
 	question: string;
 	answer: string;
 	tags: string[];
 }
 
+/**
+ * ChatbotScreen - Frontend chỉ hiển thị chat, FAQ buttons, gửi question
+ * KHÔNG xử lý AI - Backend là "não"
+ */
 export default function ChatbotScreen() {
 	const theme = useAppTheme();
 	const navigation = useNavigation();
-	const { user } = useAuth();
-	const userId = user?.id;
-	const [loading, setLoading] = useState(true);
-	const [sending, setSending] = useState(false);
-	const [typing, setTyping] = useState(false);
-	const [messages, setMessages] = useState<ChatMessage[]>([]);
-	const [faqs, setFaqs] = useState<ChatFaq[]>([]);
-	const [input, setInput] = useState('');
-	const [suggestions, setSuggestions] = useState<string[]>([]);
-const listRef = useRef<FlatList<ChatMessage>>(null);
-const insets = useSafeAreaInsets();
-const APP_BAR_HEIGHT = 48;
+	const insets = useSafeAreaInsets();
+	const [messages, setMessages] = useState<Message[]>([]);
+	const [faqs, setFaqs] = useState<FAQ[]>([]);
+	const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([]);
+	const [showFaqs, setShowFaqs] = useState(true);
+	const [inputText, setInputText] = useState('');
+	const [loading, setLoading] = useState(false);
+	const [loadingHistory, setLoadingHistory] = useState(true);
+	const [snack, setSnack] = useState('');
+	const scrollViewRef = useRef<ScrollView>(null);
 
-	const scrollToBottom = useCallback(() => {
-		requestAnimationFrame(() => {
-			listRef.current?.scrollToEnd({ animated: true });
-		});
-	}, []);
-
-	const loadInitialData = useCallback(async () => {
-		try {
-			const [historyRes, faqRes] = await Promise.all([
-				chatApi.getHistory({ limit: 100 }),
-				chatApi.getFAQs(),
-			]);
-			const messagesData = historyRes.data?.data?.messages || [];
-			const faqsData = faqRes.data?.data || [];
-			
-			// Map backend fields to frontend format
-			const mappedMessages: ChatMessage[] = messagesData.map((msg: any) => ({
-				id: msg.id,
-				userId: msg.user_id,
-				role: msg.role,
-				content: msg.content,
-				createdAt: msg.created_at,
-				metadata: msg.metadata,
-			}));
-			setMessages(mappedMessages);
-			
-			const mappedFaqs: ChatFaq[] = faqsData.map((faq: any) => ({
-				id: faq.id,
-				question: faq.question,
-				answer: faq.answer,
-				tags: faq.tags || [],
-			}));
-			setFaqs(mappedFaqs);
-			setSuggestions(mappedFaqs.slice(0, 3).map(faq => faq.question));
-		} catch (error) {
-			console.error('Failed to load chatbot data', error);
-		} finally {
-			setLoading(false);
-			setTimeout(scrollToBottom, 150);
-		}
-	}, [scrollToBottom]);
-
+	// Load chat history và FAQs khi mount
 	useEffect(() => {
 		loadInitialData();
-	}, [loadInitialData]);
-
-	useEffect(() => {
-		scrollToBottom();
-	}, [messages, scrollToBottom]);
-
-	const refreshHistory = useCallback(async () => {
-		try {
-			const res = await chatApi.getHistory({ limit: 100 });
-			const messagesData = res.data?.data?.messages || [];
-			const mappedMessages: ChatMessage[] = messagesData.map((msg: any) => ({
-				id: msg.id,
-				userId: msg.user_id,
-				role: msg.role,
-				content: msg.content,
-				createdAt: msg.created_at,
-				metadata: msg.metadata,
-			}));
-			setMessages(mappedMessages);
-		} catch (error) {
-			console.error('Failed to refresh chat history', error);
-		}
 	}, []);
 
-	const sendMessage = useCallback(async (content: string) => {
-		const trimmed = content.trim();
-		if (!trimmed || sending) return;
-		setSending(true);
-		setTyping(true);
-		setInput('');
-		if (!userId) {
-			Alert.alert('Lỗi', 'Vui lòng đăng nhập để sử dụng tính năng này');
-			return;
-		}
-		const tempMessage: ChatMessage = {
-			id: `temp-${Date.now()}`,
-			userId,
-			role: 'user',
-			content: trimmed,
-			createdAt: new Date().toISOString(),
-		};
-		setMessages(prev => [...prev, tempMessage]);
+	const loadInitialData = async () => {
 		try {
-			const response = await chatApi.sendMessage({ content: trimmed });
-			const responseData = response.data?.data;
-			if (responseData) {
-				setSuggestions(responseData.suggestions || suggestions);
+			setLoadingHistory(true);
+			const [historyRes, faqsRes] = await Promise.all([
+				// Lấy lịch sử gần nhất
+				chatApi.getHistory({ limit: 50, sortOrder: 'DESC' }),
+				chatApi.getFAQs(),
+			]);
+
+			// Handle history
+			if (historyRes.data?.code === 'SUCCESS') {
+				const historyMessages = historyRes.data.data?.messages || [];
+				setMessages(sortMessagesChronologically(historyMessages));
 			}
-			await refreshHistory();
-		} catch (error) {
-			console.error('Failed to send chat message', error);
+
+			// Handle FAQs
+			if (faqsRes.data?.code === 'SUCCESS') {
+				const faqsData = faqsRes.data.data || [];
+				setFaqs(faqsData);
+			}
+		} catch (error: any) {
+			// Log nhẹ để tránh làm người dùng thấy màn hình lỗi đỏ trong dev
+			console.warn('Failed to load initial data:', error);
+			setSnack(getErrorMessage(error, 'Không thể tải dữ liệu'));
+			// Nếu lỗi auth, clear messages để tránh hiển thị dữ liệu cũ
+			if (error?.response?.status === 401 || error?.response?.status === 403) {
+				setMessages([]);
+			}
 		} finally {
-			setTyping(false);
-			setSending(false);
+			setLoadingHistory(false);
 		}
-	}, [refreshHistory, sending, suggestions]);
-
-	const handleSend = () => {
-		sendMessage(input);
 	};
 
-	const handleFaqPress = (question: string) => {
-		sendMessage(question);
-	};
-
-	const renderMessage = ({ item }: { item: ChatMessage }) => {
-		const isUser = item.role === 'user';
-		return (
-			<View style={[styles.messageRow, isUser ? styles.userRow : styles.assistantRow]}>
-				<View
-					style={[
-						styles.messageBubble,
-						isUser ? styles.userBubble : styles.assistantBubble,
-					]}
-				>
-					<Text style={[styles.messageText, isUser ? styles.userText : styles.assistantText]}>
-						{item.content}
-					</Text>
-				</View>
-			</View>
+	const sortMessagesChronologically = (list: Message[]): Message[] => {
+		return [...list].sort(
+			(a, b) =>
+				new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
 		);
 	};
 
-	const suggestionRows = useMemo(() => {
-		if (!suggestions.length) return [] as string[][];
-		const perRow = Math.ceil(suggestions.length / 2) || 1;
-		return [
-			suggestions.slice(0, perRow),
-			suggestions.slice(perRow)
-		].filter(row => row.length > 0);
-	}, [suggestions]);
+	const sendMessage = async (question: string) => {
+		if (!question.trim() || loading) return;
 
-const topPadding = Math.max(insets.top - 6, 0);
-const keyboardOffset = useMemo(() => {
-	const baseOffset = APP_BAR_HEIGHT + insets.top;
-	return Platform.select({ ios: baseOffset, android: APP_BAR_HEIGHT }) ?? APP_BAR_HEIGHT;
-}, [insets.top]);
+		const userMessage: Message = {
+			id: `temp-${Date.now()}`,
+			role: 'user',
+			content: question.trim(),
+			created_at: new Date().toISOString(),
+		};
 
-return (
-	<SafeAreaView style={[styles.safeArea, { backgroundColor: theme.colors.background }]} edges={['left', 'right']}>
-		<View style={{ paddingTop: topPadding }}>
-			<AppBar title="Chatbot tài chính" onBack={() => navigation.goBack()} />
-		</View>
-			{loading ? (
+		// Add user message immediately (optimistic update)
+		setMessages(prev => [...prev, userMessage]);
+		setInputText('');
+		setLoading(true);
+
+		// Scroll to bottom
+		setTimeout(() => {
+			scrollViewRef.current?.scrollToEnd({ animated: true });
+		}, 100);
+
+		try {
+			const response = await chatApi.sendMessage({
+				content: question.trim(),
+			});
+
+			if (response.data?.code === 'SUCCESS') {
+				const data = response.data.data;
+
+				// Sau khi gửi thành công, reload history từ server để đồng bộ id/metadata
+				try {
+					const historyRes = await chatApi.getHistory({ limit: 50, sortOrder: 'DESC' });
+					if (historyRes.data?.code === 'SUCCESS') {
+						const historyMessages = historyRes.data.data?.messages || [];
+						setMessages(sortMessagesChronologically(historyMessages));
+					} else {
+						// Nếu load history lỗi, fallback giữ lại user + answer tối thiểu
+						setMessages(prev => {
+							const filtered = prev.filter(m => m.id !== userMessage.id);
+							const assistantMessage: Message = {
+								id: `assistant-${Date.now()}`,
+								role: 'assistant',
+								content: data.answer || '',
+								created_at: new Date().toISOString(),
+							};
+							return [...filtered, userMessage, assistantMessage];
+						});
+					}
+				} catch (historyError) {
+					console.error('Failed to reload chat history after send:', historyError);
+					// Fallback giống trên khi không lấy được lịch sử thực tế
+					setMessages(prev => {
+						const filtered = prev.filter(m => m.id !== userMessage.id);
+						const assistantMessage: Message = {
+							id: `assistant-${Date.now()}`,
+							role: 'assistant',
+							content: data.answer || '',
+							created_at: new Date().toISOString(),
+						};
+						return [...filtered, userMessage, assistantMessage];
+					});
+				}
+
+				// Update suggested questions
+				if (data.suggestedQuestions && Array.isArray(data.suggestedQuestions)) {
+					setSuggestedQuestions(data.suggestedQuestions);
+				}
+
+				// Scroll to bottom
+				setTimeout(() => {
+					scrollViewRef.current?.scrollToEnd({ animated: true });
+				}, 100);
+			} else {
+				// Handle error response
+				setSnack(response.data?.message || 'Có lỗi xảy ra');
+				// Remove temp message on error
+				setMessages(prev => prev.filter(m => m.id !== userMessage.id));
+			}
+		} catch (error) {
+			// Log nhẹ, UI sẽ hiển thị lỗi qua Snackbar
+			console.warn('Failed to send message:', error);
+			setSnack(getErrorMessage(error, 'Không thể gửi tin nhắn'));
+			// Remove temp message on error
+			setMessages(prev => prev.filter(m => m.id !== userMessage.id));
+		} finally {
+			setLoading(false);
+		}
+	};
+
+	const handleSend = () => {
+		if (inputText.trim()) {
+			sendMessage(inputText);
+		}
+	};
+
+	const handleFAQPress = (faq: FAQ) => {
+		// Gửi question từ FAQ
+		sendMessage(faq.question);
+	};
+
+	const handleSuggestionPress = (suggestion: string) => {
+		sendMessage(suggestion);
+	};
+
+	return (
+		<View
+			style={[
+				styles.container,
+				{
+					backgroundColor: theme.colors.background,
+					paddingBottom: Math.max(insets.bottom, 12),
+				},
+			]}
+		>
+			<AppBar title="Trợ lý tài chính" onBack={() => navigation.goBack()} />
+
+			{loadingHistory ? (
 				<View style={styles.loadingContainer}>
 					<ActivityIndicator size="large" color={theme.colors.primary} />
-					<Text style={{ marginTop: 12, color: theme.colors.onBackground }}>Đang kết nối chatbot...</Text>
+					<Text style={[styles.loadingText, { color: theme.colors.onSurfaceVariant }]}>
+						Đang tải...
+					</Text>
 				</View>
 			) : (
-			<KeyboardAvoidingView
-				style={styles.keyboardContainer}
-				behavior={Platform.select({ ios: 'padding', android: 'height' })}
-				keyboardVerticalOffset={keyboardOffset}
-				enabled>
-					<View style={styles.content}>
-						<FlatList
-							ref={listRef}
-							data={messages}
-							renderItem={renderMessage}
-							keyExtractor={(item) => item.id}
-							contentContainerStyle={styles.listContent}
-							ListFooterComponent={typing ? (
-								<View style={styles.typingRow}>
-									<ActivityIndicator size="small" color={theme.colors.primary} />
-									<Text style={{ marginLeft: 8, color: theme.colors.onSurfaceVariant }}>Chatbot đang phản hồi...</Text>
-								</View>
-							) : null}
-						/>
-					</View>
-					<View style={[styles.inputBar, { backgroundColor: theme.colors.surface, paddingBottom: Math.max(insets.bottom, 16) }]}>
-						<View style={styles.suggestionContainer}>
-							{suggestionRows.map((row, rowIndex) => (
-								<ScrollView
-									horizontal
-									key={`suggestion-row-${rowIndex}`}
-									showsHorizontalScrollIndicator={false}
-									contentContainerStyle={styles.suggestionRow}
+				<>
+					{/* Chat Messages */}
+					<ScrollView
+						ref={scrollViewRef}
+						style={styles.messagesContainer}
+						contentContainerStyle={styles.messagesContent}
+						onContentSizeChange={() => {
+							scrollViewRef.current?.scrollToEnd({ animated: true });
+						}}
+					>
+						{messages.map((message) => (
+							<View
+								key={message.id}
+								style={[
+									styles.messageWrapper,
+									message.role === 'user' ? styles.userMessageWrapper : styles.assistantMessageWrapper,
+								]}
+							>
+								<View
+									style={[
+										styles.messageBubble,
+										message.role === 'user'
+											? { backgroundColor: theme.colors.primary }
+											: { backgroundColor: theme.colors.surfaceVariant },
+									]}
 								>
-									{row.map(suggestion => (
-										<Button
-											key={`${rowIndex}-${suggestion}`}
-											compact
-											mode="text"
-											onPress={() => handleFaqPress(suggestion)}
-											textColor={theme.colors.primary}
-											style={styles.suggestionButton}
-										>
-											{suggestion}
-										</Button>
-									))}
-								</ScrollView>
-							))}
+									<Text
+										style={[
+											styles.messageText,
+											message.role === 'user'
+												? { color: '#fff' }
+												: { color: theme.colors.onSurfaceVariant },
+										]}
+									>
+										{message.content}
+									</Text>
+								</View>
+							</View>
+						))}
+
+						{loading && (
+							<View style={styles.assistantMessageWrapper}>
+								<View style={[styles.messageBubble, { backgroundColor: theme.colors.surfaceVariant }]}>
+									<ActivityIndicator size="small" color={theme.colors.primary} />
+								</View>
+							</View>
+						)}
+					</ScrollView>
+
+					{/* FAQ near input để dễ thấy (có thể ẩn/hiện) */}
+					{faqs.length > 0 && showFaqs && (
+						<View style={styles.faqContainerInMessages}>
+							<View style={styles.faqHeaderRow}>
+								<Text style={[styles.faqSubtitle, { color: theme.colors.onSurfaceVariant }]}>
+									Câu hỏi thường gặp:
+								</Text>
+								<TouchableOpacity onPress={() => setShowFaqs(false)}>
+									<Text style={[styles.faqHideText, { color: theme.colors.onSurfaceVariant }]}>
+										Ẩn
+									</Text>
+								</TouchableOpacity>
+							</View>
+							<ScrollView
+								horizontal
+								showsHorizontalScrollIndicator={false}
+								contentContainerStyle={styles.faqScrollContent}
+							>
+								{faqs.slice(0, 8).map((faq) => (
+									<TouchableOpacity
+										key={faq.id}
+										style={[styles.faqButtonSmall, { backgroundColor: theme.colors.primaryContainer }]}
+										onPress={() => handleFAQPress(faq)}
+									>
+										<Text style={[styles.faqButtonTextSmall, { color: theme.colors.onPrimaryContainer }]}>
+											{faq.question}
+										</Text>
+									</TouchableOpacity>
+								))}
+							</ScrollView>
 						</View>
-						<View style={styles.inputRow}>
+					)}
+
+					{/* Nút hiện lại FAQ khi đã ẩn */}
+					{faqs.length > 0 && !showFaqs && (
+						<TouchableOpacity
+							style={styles.faqShowButton}
+							onPress={() => setShowFaqs(true)}
+						>
+							<Text style={[styles.faqShowText, { color: theme.colors.primary }]}>
+								Hiện câu hỏi thường gặp
+							</Text>
+						</TouchableOpacity>
+					)}
+					{/* Input Area */}
+					<KeyboardAvoidingView
+						behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+						keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+					>
+						<View style={[styles.inputContainer, { backgroundColor: theme.colors.surface }]}>
 							<TextInput
-								mode="outlined"
-								placeholder="Hỏi tôi về chi tiêu, dự báo, tiết kiệm..."
-								value={input}
-								onChangeText={setInput}
-								style={styles.textInput}
-								editable={!sending}
-								returnKeyType="send"
+								style={[styles.input, { color: theme.colors.onSurface }]}
+								placeholder="Nhập câu hỏi..."
+								placeholderTextColor={theme.colors.onSurfaceVariant}
+								value={inputText}
+								onChangeText={setInputText}
+								multiline
+								editable={!loading}
 								onSubmitEditing={handleSend}
 							/>
-							<IconButton
-								mode="contained"
-								icon="send"
+							<TouchableOpacity
+								style={[
+									styles.sendButton,
+									{ backgroundColor: inputText.trim() ? theme.colors.primary : theme.colors.surfaceVariant },
+								]}
 								onPress={handleSend}
-								disabled={sending || !input.trim()}
-								style={styles.sendButton}
-							/>
+								disabled={!inputText.trim() || loading}
+							>
+								<Text
+									style={[
+										styles.sendButtonText,
+										{ color: inputText.trim() ? '#fff' : theme.colors.onSurfaceVariant },
+									]}
+								>
+									Gửi
+								</Text>
+							</TouchableOpacity>
 						</View>
-					</View>
-				</KeyboardAvoidingView>
+					</KeyboardAvoidingView>
+				</>
 			)}
-		</SafeAreaView>
+
+			<Snackbar
+				visible={Boolean(snack)}
+				onDismiss={() => setSnack('')}
+				duration={3000}
+				style={{ backgroundColor: theme.colors.errorContainer }}
+			>
+				<Text style={{ color: theme.colors.onErrorContainer }}>{snack}</Text>
+			</Snackbar>
+		</View>
 	);
 }
 
 const styles = StyleSheet.create({
-	safeArea: {
+	container: {
 		flex: 1,
 	},
 	loadingContainer: {
 		flex: 1,
 		justifyContent: 'center',
 		alignItems: 'center',
-		paddingHorizontal: 24,
 	},
-	keyboardContainer: {
-		flex: 1,
+	loadingText: {
+		marginTop: 16,
+		fontSize: 14,
 	},
-	content: {
-		flex: 1,
-		paddingHorizontal: 16,
-		paddingTop: 12,
+	faqContainer: {
+		padding: 16,
+		borderBottomWidth: 1,
+		borderBottomColor: '#e0e0e0',
+		backgroundColor: '#f9f9f9',
 	},
-	listContent: {
-		paddingBottom: 140,
+	faqTitle: {
+		fontSize: 16,
+		fontWeight: '600',
+		marginBottom: 12,
 	},
-	messageRow: {
-		marginBottom: 10,
+	faqScroll: {
 		flexDirection: 'row',
 	},
-	userRow: {
-		justifyContent: 'flex-end',
+	faqScrollContent: {
+		paddingRight: 16,
 	},
-	assistantRow: {
-		justifyContent: 'flex-start',
+	faqButton: {
+		paddingHorizontal: 16,
+		paddingVertical: 10,
+		borderRadius: 20,
+		marginRight: 8,
+		elevation: 1,
+		shadowColor: '#000',
+		shadowOffset: { width: 0, height: 1 },
+		shadowOpacity: 0.1,
+		shadowRadius: 2,
+	},
+	faqButtonText: {
+		fontSize: 14,
+		fontWeight: '500',
+	},
+	faqContainerInMessages: {
+		padding: 12,
+		marginBottom: 16,
+		backgroundColor: '#f5f5f5',
+		borderRadius: 12,
+		marginHorizontal: 16,
+	},
+	faqSubtitle: {
+		fontSize: 13,
+		fontWeight: '600',
+		marginBottom: 8,
+	},
+	faqHeaderRow: {
+		flexDirection: 'row',
+		justifyContent: 'space-between',
+		alignItems: 'center',
+		marginBottom: 8,
+	},
+	faqHideText: {
+		fontSize: 12,
+		textDecorationLine: 'underline',
+	},
+	faqShowButton: {
+		alignSelf: 'flex-start',
+		marginHorizontal: 16,
+		marginBottom: 8,
+	},
+	faqShowText: {
+		fontSize: 12,
+		textDecorationLine: 'underline',
+	},
+	faqButtonSmall: {
+		paddingHorizontal: 12,
+		paddingVertical: 6,
+		borderRadius: 16,
+		marginRight: 6,
+		marginBottom: 4,
+	},
+	faqButtonTextSmall: {
+		fontSize: 12,
+		fontWeight: '500',
+	},
+	messagesContainer: {
+		flex: 1,
+	},
+	messagesContent: {
+		padding: 16,
+	},
+	messageWrapper: {
+		marginBottom: 12,
+	},
+	userMessageWrapper: {
+		alignItems: 'flex-end',
+	},
+	assistantMessageWrapper: {
+		alignItems: 'flex-start',
 	},
 	messageBubble: {
 		maxWidth: '80%',
 		padding: 12,
 		borderRadius: 16,
 	},
-	userBubble: {
-		backgroundColor: '#2563EB',
-		borderBottomRightRadius: 2,
-	},
-	assistantBubble: {
-		backgroundColor: '#E3F2FD',
-		borderBottomLeftRadius: 2,
-	},
 	messageText: {
 		fontSize: 15,
 		lineHeight: 20,
 	},
-	userText: {
-		color: '#fff',
-	},
-	assistantText: {
-		color: '#0B1A39',
-	},
-	typingRow: {
-		flexDirection: 'row',
-		alignItems: 'center',
-		paddingVertical: 12,
-		paddingLeft: 4,
-	},
-	inputBar: {
-		borderTopWidth: StyleSheet.hairlineWidth,
-		borderColor: 'rgba(0,0,0,0.08)',
-		paddingHorizontal: 12,
-		paddingTop: 10,
-	},
-	suggestionContainer: {
-		marginBottom: 4,
-	},
-	suggestionRow: {
-		flexDirection: 'row',
-		alignItems: 'center',
-		gap: 8,
-		paddingBottom: 4,
+	suggestionsContainer: {
+		paddingHorizontal: 16,
+		paddingVertical: 8,
+		borderTopWidth: 1,
+		borderTopColor: '#e0e0e0',
 	},
 	suggestionButton: {
-		paddingHorizontal: 6,
+		paddingHorizontal: 16,
+		paddingVertical: 8,
+		borderRadius: 20,
+		marginRight: 8,
 	},
-	inputRow: {
+	suggestionText: {
+		fontSize: 13,
+	},
+	inputContainer: {
 		flexDirection: 'row',
-		alignItems: 'center',
-		gap: 8,
+		padding: 12,
+		alignItems: 'flex-end',
+		borderTopWidth: 1,
+		borderTopColor: '#e0e0e0',
 	},
-	textInput: {
+	input: {
 		flex: 1,
+		minHeight: 40,
+		maxHeight: 100,
+		paddingHorizontal: 12,
+		paddingVertical: 8,
+		borderRadius: 20,
+		backgroundColor: '#f5f5f5',
+		marginRight: 8,
+		fontSize: 15,
 	},
 	sendButton: {
-		marginBottom: 4,
+		paddingHorizontal: 20,
+		paddingVertical: 10,
+		borderRadius: 20,
+	},
+	sendButtonText: {
+		fontSize: 15,
+		fontWeight: '600',
 	},
 });
-

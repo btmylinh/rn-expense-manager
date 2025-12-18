@@ -6,6 +6,7 @@ import { walletApi } from '../api/walletApi';
 import { getErrorMessage } from '../utils/errorHandler';
 import { transactionApi } from '../api/transactionApi';
 import { TRANSFER_CATEGORY, getTodayDate } from '../common/transactionCategories';
+import WalletSelectModal from './WalletSelectModal';
 
 interface Props {
     userId: number;
@@ -54,8 +55,8 @@ export default function WalletManagerSheet({ userId, visible, onDismiss, onWalle
     const [toWalletId, setToWalletId] = useState<number | undefined>(undefined);
     const [transferAmount, setTransferAmount] = useState('');
     const [transferNote, setTransferNote] = useState('');
-    const [fromWalletPicker, setFromWalletPicker] = useState(false);
-    const [toWalletPicker, setToWalletPicker] = useState(false);
+    const [showFromWalletPicker, setShowFromWalletPicker] = useState(false);
+    const [showToWalletPicker, setShowToWalletPicker] = useState(false);
 
     useEffect(() => {
         if (!visible) return;
@@ -410,46 +411,24 @@ export default function WalletManagerSheet({ userId, visible, onDismiss, onWalle
 
                             <View style={{ marginTop: 12 }}>
                                 <Text style={{ marginBottom: 8, fontWeight: '600' }}>Từ ví</Text>
-                                <Menu
-                                    visible={fromWalletPicker}
-                                    onDismiss={() => setFromWalletPicker(false)}
-                                    anchor={
-                                        <Button mode="outlined" onPress={() => setFromWalletPicker(true)}>
-                                            {fromWalletId ? wallets.find(w => w.id === fromWalletId)?.name || 'Chọn ví' : 'Chọn ví nguồn'}
-                                        </Button>
-                                    }
+                                <Button 
+                                    mode="outlined" 
+                                    onPress={() => setShowFromWalletPicker(true)}
+                                    style={{ marginBottom: 8 }}
                                 >
-                                    {wallets.map(w => (
-                                        <Menu.Item 
-                                            key={w.id} 
-                                            onPress={() => { setFromWalletId(w.id); setFromWalletPicker(false); }} 
-                                            title={`${w.name} (${w.amount.toLocaleString('vi-VN')} ${w.currency})`}
-                                            disabled={w.id === toWalletId}
-                                        />
-                                    ))}
-                                </Menu>
+                                    {fromWalletId ? wallets.find(w => w.id === fromWalletId)?.name || 'Chọn ví' : 'Chọn ví nguồn'}
+                                </Button>
                             </View>
 
                             <View style={{ marginTop: 12 }}>
                                 <Text style={{ marginBottom: 8, fontWeight: '600' }}>Đến ví</Text>
-                                <Menu
-                                    visible={toWalletPicker}
-                                    onDismiss={() => setToWalletPicker(false)}
-                                    anchor={
-                                        <Button mode="outlined" onPress={() => setToWalletPicker(true)}>
-                                            {toWalletId ? wallets.find(w => w.id === toWalletId)?.name || 'Chọn ví' : 'Chọn ví đích'}
-                                        </Button>
-                                    }
+                                <Button 
+                                    mode="outlined" 
+                                    onPress={() => setShowToWalletPicker(true)}
+                                    style={{ marginBottom: 8 }}
                                 >
-                                    {wallets.map(w => (
-                                        <Menu.Item 
-                                            key={w.id} 
-                                            onPress={() => { setToWalletId(w.id); setToWalletPicker(false); }} 
-                                            title={`${w.name} (${w.amount.toLocaleString('vi-VN')} ${w.currency})`}
-                                            disabled={w.id === fromWalletId}
-                                        />
-                                    ))}
-                                </Menu>
+                                    {toWalletId ? wallets.find(w => w.id === toWalletId)?.name || 'Chọn ví' : 'Chọn ví đích'}
+                                </Button>
                             </View>
 
                             <View style={{ marginTop: 12 }}>
@@ -485,6 +464,35 @@ export default function WalletManagerSheet({ userId, visible, onDismiss, onWalle
                         </KeyboardAwareScrollView>
                     </Modal>
                 </Portal>
+
+                {/* Wallet Select Modals */}
+                <WalletSelectModal
+                    visible={showFromWalletPicker}
+                    selectedWalletId={fromWalletId || null}
+                    onDismiss={() => setShowFromWalletPicker(false)}
+                    onSelect={(id) => {
+                        if (id != null) {
+                            setFromWalletId(id);
+                        }
+                        setShowFromWalletPicker(false);
+                    }}
+                    title="Chọn ví nguồn"
+                    showBalance={true}
+                />
+
+                <WalletSelectModal
+                    visible={showToWalletPicker}
+                    selectedWalletId={toWalletId || null}
+                    onDismiss={() => setShowToWalletPicker(false)}
+                    onSelect={(id) => {
+                        if (id != null) {
+                            setToWalletId(id);
+                        }
+                        setShowToWalletPicker(false);
+                    }}
+                    title="Chọn ví đích"
+                    showBalance={true}
+                />
             </Modal>
         </Portal>
     );

@@ -53,6 +53,10 @@ export default function SavingsGoalCard({ goal, onPress, onAddMoney, onEdit }: S
 	const [addingMoney, setAddingMoney] = useState(false);
 	const [snackMessage, setSnackMessage] = useState('');
 	
+	const isErrorSnack =
+		snackMessage.startsWith('Vui lòng') ||
+		snackMessage.startsWith('Có lỗi');
+	
 	// Wallet selection state
 	const [selectedWalletId, setSelectedWalletId] = useState<number | null>(null);
 	const [showWalletDropdown, setShowWalletDropdown] = useState(false);
@@ -179,8 +183,9 @@ export default function SavingsGoalCard({ goal, onPress, onAddMoney, onEdit }: S
 					styles.card, 
 					styles.cardShadow, 
 					{ 
-						borderColor: accent + '33',
-						borderWidth: 1,
+						borderColor: accent ,
+						backgroundColor: accent + '15',
+						borderWidth: 2,
 					}
 				]}>
 					
@@ -301,7 +306,7 @@ export default function SavingsGoalCard({ goal, onPress, onAddMoney, onEdit }: S
 				</View>
 			</TouchableOpacity>
 
-			{/* Quick Add Money Modal */}
+			{/* Quick Add Money Modal + Snackbar đặt chung Portal để không bị che */}
 			<Portal>
 				<Modal
 					visible={addMoneyModalVisible}
@@ -387,11 +392,33 @@ export default function SavingsGoalCard({ goal, onPress, onAddMoney, onEdit }: S
 						</Button>
 					</View>
 				</Modal>
+
+				<Snackbar
+					visible={!!snackMessage}
+					onDismiss={() => setSnackMessage('')}
+					duration={3000}
+					style={{
+						backgroundColor: isErrorSnack
+							? theme.colors.errorContainer
+							: theme.colors.primaryContainer,
+						marginHorizontal: 16,
+						marginBottom: 32,
+					}}
+				>
+					<Text
+						style={{
+							color: isErrorSnack
+								? theme.colors.onErrorContainer
+								: theme.colors.onPrimaryContainer,
+						}}
+					>
+						{snackMessage}
+					</Text>
+				</Snackbar>
 			</Portal>
 
 			<WalletSelectModal
 					visible={showWalletDropdown}
-				wallets={wallets}
 				selectedWalletId={selectedWalletId}
 					onDismiss={() => setShowWalletDropdown(false)}
 				onSelect={(walletId) => {
@@ -404,13 +431,6 @@ export default function SavingsGoalCard({ goal, onPress, onAddMoney, onEdit }: S
 				noneDescription="Chỉ ghi nhận vào mục tiêu"
 			/>
 
-			<Snackbar
-				visible={!!snackMessage}
-				onDismiss={() => setSnackMessage('')}
-				duration={3000}
-			>
-				{snackMessage}
-			</Snackbar>
 		</>
 	);
 }

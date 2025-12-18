@@ -44,7 +44,7 @@ import { useMetadata } from '../../contexts/MetadataContext';
 import { transactionApi } from '../../api/transactionApi';
 import { walletApi } from '../../api/walletApi';
 import { getErrorMessage } from '../../utils/errorHandler';
-import { triggerStreakActivity } from '../../utils/streakHelpers';
+// Trigger tự động xử lý streak khi có transaction, không cần import triggerStreakActivity
 import { useNotifications } from '../../contexts/NotificationContext';
 import { aiApi } from '../../api/aiApi';
 import * as ImagePicker from 'expo-image-picker';
@@ -320,11 +320,6 @@ export default function AddTransactionScreen() {
     [loadWalletOverview, refreshNotifications, refreshWallets]
   );
 
-  const recordTransactionActivity = useCallback(async () => {
-    await triggerStreakActivity('transaction');
-  }, []);
-
-
   useEffect(() => {
     if (!wallets.length) {
       setSelectedWallet(null);
@@ -552,7 +547,7 @@ export default function AddTransactionScreen() {
       });
 
       await refreshAfterMutation(selectedWallet.id);
-      await recordTransactionActivity();
+      // Trigger tự động xử lý streak khi có transaction, không cần gọi API activate
 
       // Đánh dấu thời gian tạo giao dịch mới (để hiển thị badge)
       setNewTransactionTime(Date.now());
@@ -565,7 +560,7 @@ export default function AddTransactionScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, [recordTransactionActivity, refreshAfterMutation, selectedWallet]);
+  }, [refreshAfterMutation, selectedWallet]);
 
   const handleSaveEdit = useCallback(async (data: {
     amount: number;
@@ -588,7 +583,7 @@ export default function AddTransactionScreen() {
       });
 
       await refreshAfterMutation(selectedWallet.id);
-      await recordTransactionActivity();
+      // Trigger tự động xử lý streak khi có transaction, không cần gọi API activate
 
         setShowEditSheet(false);
         setActionTx(null);
@@ -598,7 +593,7 @@ export default function AddTransactionScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, [actionTx, recordTransactionActivity, refreshAfterMutation, selectedWallet]);
+  }, [actionTx, refreshAfterMutation, selectedWallet]);
 
   const confirmDelete = () => {
     setShowActionsSheet(false);
@@ -681,7 +676,7 @@ export default function AddTransactionScreen() {
       );
 
       await refreshAfterMutation(selectedWallet.id);
-      await recordTransactionActivity();
+      // Trigger tự động xử lý streak khi có transaction, không cần gọi API activate
 
       // Đánh dấu thời gian tạo giao dịch mới (để hiển thị badge)
       setNewTransactionTime(Date.now());
@@ -1122,8 +1117,7 @@ export default function AddTransactionScreen() {
 
         <WalletSelectModal
             visible={showWalletModal}
-          wallets={wallets}
-          selectedWalletId={selectedWallet?.id}
+          selectedWalletId={selectedWallet?.id || null}
             onDismiss={() => setShowWalletModal(false)}
           onSelect={handleWalletSelectById}
           title="Chọn ví"

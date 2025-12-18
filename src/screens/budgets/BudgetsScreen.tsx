@@ -104,11 +104,28 @@ export default function BudgetsScreen() {
 		const standardFirst: Array<{ label: string; startDate: string; endDate: string }> = [];
 		const customAfter: Array<{ label: string; startDate: string; endDate: string }> = [];
 			groups.forEach(({ startDate, endDate }) => {
+				// Normalize dates for comparison (remove time component)
+				const normalizeDate = (dateStr: string) => {
+					const d = new Date(dateStr);
+					return toLocalYMD(d);
+				};
+				
+				const normalizedStart = normalizeDate(startDate);
+				const normalizedEnd = normalizeDate(endDate);
+				
 				let label = `${formatVNDate(startDate)} - ${formatVNDate(endDate)}`;
-				if (startDate === periods.week.start && endDate === periods.week.end) label = 'Tuần này';
-				else if (startDate === periods.month.start && endDate === periods.month.end) label = 'Tháng này';
-				else if (startDate === periods.quarter.start && endDate === periods.quarter.end) label = 'Quý này';
-				else if (startDate === periods.year.start && endDate === periods.year.end) label = 'Năm nay';
+				
+				// Compare normalized dates with current periods
+				if (normalizedStart === periods.week.start && normalizedEnd === periods.week.end) {
+					label = 'Tuần này';
+				} else if (normalizedStart === periods.month.start && normalizedEnd === periods.month.end) {
+					label = 'Tháng này';
+				} else if (normalizedStart === periods.quarter.start && normalizedEnd === periods.quarter.end) {
+					label = 'Quý này';
+				} else if (normalizedStart === periods.year.start && normalizedEnd === periods.year.end) {
+					label = 'Năm nay';
+				}
+				
 			const tab = { label, startDate, endDate };
 			if (label === 'Tuần này' || label === 'Tháng này' || label === 'Quý này' || label === 'Năm nay') {
 				standardFirst.push(tab);
@@ -124,7 +141,11 @@ export default function BudgetsScreen() {
 
 	const fetchBudgets = useCallback(
 		async (walletId: number) => {
+			// Only show loading on initial load, not on refresh
+			const isInitialLoad = budgets.length === 0;
+			if (isInitialLoad) {
 			setLoading(true);
+			}
 			try {
 				const response = await budgetApi.getBudgets({
 					wallet_id: walletId,
@@ -144,14 +165,19 @@ export default function BudgetsScreen() {
 			setLoading(false);
 			}
 		},
-		[buildTabs, mapBudgets]
+		[buildTabs, mapBudgets, budgets.length]
 	);
 
 
-	// Ensure metadata cache is available (only once on mount)
+	// Ensure metadata cache is available (only once on mount) - Load parallel
 	useEffect(() => {
-		ensureCategories();
-		ensureWallets();
+		// Load categories and wallets in parallel for faster initial load
+		Promise.all([
+			ensureCategories(),
+			ensureWallets(),
+		]).catch((error) => {
+			console.error('Failed to load metadata:', error);
+		});
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, []);
 
@@ -181,19 +207,29 @@ export default function BudgetsScreen() {
 	}, [wallets, currentWalletId]);
 
 	// Load budgets by wallet (API already calculates spent and chartData)
+	// Load immediately when walletId is available
 	useEffect(() => {
 		if (!currentWalletId) return;
+		// Don't wait, load budgets immediately
 		fetchBudgets(currentWalletId);
 	}, [currentWalletId, fetchBudgets]);
 
-	// Refresh when screen focused
+	// Refresh when screen focused - Optimize parallel loading
 	useEffect(() => {
 		const unsubscribe = (navigation as any).addListener('focus', async () => {
 			try {
-				await Promise.all([refreshCategories(), refreshWallets()]);
+				// Load all data in parallel for faster refresh
+				const promises: Promise<any>[] = [
+					refreshCategories(),
+					refreshWallets(),
+				];
+				
+				// If we have a wallet, also refresh budgets in parallel
 				if (currentWalletId) {
-					await fetchBudgets(currentWalletId);
+					promises.push(fetchBudgets(currentWalletId));
 				}
+				
+				await Promise.all(promises);
 			} catch (error) {
 				console.error('Failed to refresh budgets:', error);
 			}
@@ -259,8 +295,15 @@ export default function BudgetsScreen() {
 
 	return (
 		<View style={[styles.container, { backgroundColor: theme.colors.background, padding: theme.spacing(3) }]}>
-			{/* App Bar with wallet selector (replace title) */}
+			{/* App Bar with back arrow + wallet selector + history */}
 			<View style={[theme.ui.appBar, styles.appBar, { backgroundColor: theme.colors.surface, paddingTop: 0 }]}>
+				<IconButton
+					icon="arrow-left"
+					size={24}
+					iconColor={theme.colors.onSurface}
+					onPress={() => navigation.goBack()}
+				/>
+
 				<TouchableOpacity style={styles.walletSelector} onPress={() => setWalletSheetVisible(true)}>
 					<Text style={[styles.walletTitle, { color: theme.colors.onSurface }]}>{walletName}</Text>
 					<IconButton icon="chevron-down" size={20} iconColor={theme.colors.onSurface} />
@@ -276,6 +319,37 @@ export default function BudgetsScreen() {
 			</View>
 
 
+		{/* Loading skeleton for tabs */}
+		{loading && timeTabs.length === 0 ? (
+			<ScrollView
+				horizontal
+				showsHorizontalScrollIndicator={false}
+				style={styles.tabsWrap}
+				contentContainerStyle={styles.tabsContent}
+			>
+				{[1, 2, 3].map((i) => (
+					<View
+						key={i}
+						style={[
+							styles.tabBtn,
+							{
+								backgroundColor: theme.colors.surfaceVariant,
+								opacity: 0.5,
+							},
+						]}
+					>
+						<View
+							style={{
+								width: 80,
+								height: 16,
+								backgroundColor: theme.colors.outline,
+								borderRadius: 4,
+							}}
+						/>
+					</View>
+				))}
+			</ScrollView>
+		) : (
 		<ScrollView
 			horizontal
 			showsHorizontalScrollIndicator={false}
@@ -294,8 +368,16 @@ export default function BudgetsScreen() {
 				</TouchableOpacity>
 			))}
 		</ScrollView>
+		)}
 
-			{timeTabs.length > 0 ? (
+			{loading && timeTabs.length === 0 ? (
+				<View style={styles.loadingContainer}>
+					<ProgressBar indeterminate color={theme.colors.primary} />
+					<Text style={[styles.loadingText, { color: theme.colors.onSurfaceVariant }]}>
+						Đang tải ngân sách...
+					</Text>
+				</View>
+			) : timeTabs.length > 0 ? (
 				<BudgetContent
 					budgets={budgets}
 					categories={categories}
@@ -401,7 +483,6 @@ export default function BudgetsScreen() {
 
 			<WalletSelectModal
 				visible={walletSheetVisible}
-				wallets={wallets}
 				selectedWalletId={currentWalletId}
 				onDismiss={() => setWalletSheetVisible(false)}
 				onSelect={(id) => {
@@ -428,6 +509,18 @@ const styles = StyleSheet.create({
 	tabBtn: { paddingVertical: 9, paddingHorizontal: 21, borderRadius: 18, minWidth: 80, alignItems: 'center' },
 	tabText: { fontWeight: '700', fontSize: 13 },
 
+	// Loading State Styles
+	loadingContainer: {
+		flex: 1,
+		justifyContent: 'center',
+		alignItems: 'center',
+		padding: 24,
+	},
+	loadingText: {
+		marginTop: 16,
+		fontSize: 14,
+		textAlign: 'center',
+	},
 	// Empty State Styles
 	emptyContainer: {
 		flex: 1,

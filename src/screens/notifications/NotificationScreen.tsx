@@ -28,6 +28,7 @@ export default function NotificationScreen({ navigation }: NotificationScreenPro
       case NotificationType.LARGE_TRANSACTION:
         return 'credit-card-outline';
       case NotificationType.TRANSACTION_REMINDER:
+      case NotificationType.RECURRING_EXPENSE_REMINDER:
         return 'bell-ring';
       case NotificationType.WEEKLY_REPORT:
         return 'chart-line';
@@ -51,6 +52,8 @@ export default function NotificationScreen({ navigation }: NotificationScreenPro
         return '#F59E0B';
       case NotificationType.LARGE_TRANSACTION:
         return '#8B5CF6';
+      case NotificationType.RECURRING_EXPENSE_REMINDER:
+        return '#F59E0B';
       case NotificationType.GOAL_ACHIEVED:
         return '#10B981';
       case NotificationType.WEEKLY_REPORT:
@@ -90,6 +93,9 @@ export default function NotificationScreen({ navigation }: NotificationScreenPro
         break;
       case NotificationType.LARGE_TRANSACTION:
         navigation.navigate('Tabs', { initialTab: 'Sổ giao dịch' });
+        break;
+      case NotificationType.RECURRING_EXPENSE_REMINDER:
+        navigation.navigate('RecurringExpenses');
         break;
       case NotificationType.WEEKLY_REPORT:
         navigation.navigate('Tabs', { initialTab: 'Tổng quan' });

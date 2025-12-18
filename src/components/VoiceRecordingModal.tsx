@@ -47,6 +47,22 @@ export default function VoiceRecordingModal({
   // Create audio recorder using hook
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
+  // Helper function để clear timer an toàn
+  const clearTimer = () => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  };
+
+  // Helper function để start timer an toàn
+  const startTimer = () => {
+    clearTimer(); // Clear timer cũ trước khi tạo mới
+    intervalRef.current = setInterval(() => {
+      setRecordingTime(prev => prev + 1);
+    }, 1000);
+  };
+
   useEffect(() => {
     if (visible && isRecording && !isPaused) {
       // Start pulse animation
@@ -67,43 +83,68 @@ export default function VoiceRecordingModal({
       pulseAnimation.start();
 
       // Start timer
-      intervalRef.current = setInterval(() => {
-        setRecordingTime(prev => prev + 1);
-      }, 1000);
+      startTimer();
 
       return () => {
         pulseAnimation.stop();
-        if (intervalRef.current) {
-          clearInterval(intervalRef.current);
-        }
+        clearTimer();
       };
     } else {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
+      // Dừng timer khi không recording hoặc đang pause
+      clearTimer();
     }
   }, [visible, isRecording, isPaused, pulseAnim]);
 
   useEffect(() => {
     // Reset state when modal opens
     if (visible) {
+      // Clear timer trước khi reset
+      clearTimer();
       setIsRecording(false);
       setIsPaused(false);
       setRecordingTime(0);
       audioUriRef.current = null;
       
-      // Ensure recorder is stopped before starting new recording
-      if (recorder && recorder.isRecording) {
-        recorder.stop().catch(console.error);
+      // Ensure recorder is stopped and cleaned up before starting new recording
+      const cleanupRecorder = async () => {
+        if (recorder) {
+          const status = recorder.getStatus();
+          if (status.isRecording) {
+            try {
+              await recorder.stop();
+              // Đợi recorder hoàn toàn dừng
+              await new Promise(resolve => setTimeout(resolve, 200));
+            } catch (e) {
+              console.warn('Error stopping recorder during cleanup:', e);
       }
+          }
+        }
+      };
       
-      // Start recording automatically when modal opens
+      // Cleanup trước, sau đó start recording
+      cleanupRecorder().then(() => {
+        // Delay nhỏ để đảm bảo recorder đã sẵn sàng
+        setTimeout(() => {
       startRecording();
+        }, 100);
+      });
     } else {
       // Cleanup when modal closes
+      clearTimer();
       stopRecording();
     }
+
+    // Cleanup khi component unmount
+    return () => {
+      clearTimer();
+      // Đảm bảo recorder được stop khi unmount
+      if (recorder) {
+        const status = recorder.getStatus();
+        if (status.isRecording) {
+          recorder.stop().catch(console.error);
+        }
+      }
+    };
   }, [visible]);
 
   const startRecording = async () => {
@@ -122,52 +163,106 @@ export default function VoiceRecordingModal({
         playsInSilentMode: true,
       });
 
-      // Ensure recorder is stopped before preparing
-      if (recorder && recorder.isRecording) {
+      // Đảm bảo recorder được stop và reset hoàn toàn trước khi prepare
+      if (recorder) {
+        const status = recorder.getStatus();
+        // Nếu đang recording, stop trước
+        if (status.isRecording) {
+          try {
         await recorder.stop();
+            // Đợi recorder hoàn toàn dừng
+            await new Promise(resolve => setTimeout(resolve, 200));
+          } catch (e) {
+            console.warn('Error stopping recorder:', e);
+          }
+        }
       }
 
-      // Prepare recorder with options
+      // Prepare recorder với retry logic
+      let retries = 3;
+      let prepared = false;
+      
+      while (retries > 0 && !prepared) {
+        try {
       await recorder.prepareToRecordAsync();
       
-      // Small delay to ensure recorder is fully ready
-      await new Promise(resolve => setTimeout(resolve, 100));
+          // Đợi recorder sẵn sàng (tăng delay cho Android)
+          await new Promise(resolve => setTimeout(resolve, 300));
+          
+          // Kiểm tra status kỹ hơn
+          const status = recorder.getStatus();
+          if (status.canRecord && !status.isRecording) {
+            prepared = true;
+          } else {
+            retries--;
+            if (retries > 0) {
+              console.log(`Recorder not ready, retrying... (${retries} left)`);
+              await new Promise(resolve => setTimeout(resolve, 200));
+            }
+          }
+        } catch (prepareError) {
+          retries--;
+          console.warn(`Prepare failed, retrying... (${retries} left):`, prepareError);
+          if (retries > 0) {
+            await new Promise(resolve => setTimeout(resolve, 200));
+          } else {
+            throw prepareError;
+          }
+        }
+      }
+
+      if (!prepared) {
+        throw new Error('Recorder failed to prepare after retries');
+      }
       
-      // Check if recorder is ready
-      const status = recorder.getStatus();
-      if (!status.canRecord) {
-        throw new Error('Recorder is not ready to record');
+      // Kiểm tra lại status trước khi record
+      const finalStatus = recorder.getStatus();
+      if (!finalStatus.canRecord || finalStatus.isRecording) {
+        throw new Error(`Recorder not in valid state: canRecord=${finalStatus.canRecord}, isRecording=${finalStatus.isRecording}`);
       }
       
       // Start recording
       recorder.record();
       
+      // Đợi một chút để đảm bảo recording đã bắt đầu
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Verify recording đã bắt đầu
+      const verifyStatus = recorder.getStatus();
+      if (!verifyStatus.isRecording) {
+        throw new Error('Recording failed to start');
+      }
+      
       setIsRecording(true);
       setIsPaused(false);
       setRecordingTime(0);
       
-      // Start timer
-      intervalRef.current = setInterval(() => {
-        setRecordingTime(prev => prev + 1);
-      }, 1000);
+      // Start timer (sẽ được quản lý bởi useEffect)
+      // Không tạo timer ở đây để tránh duplicate
     } catch (error) {
       console.error('Failed to start recording:', error);
-      Alert.alert('Lỗi', 'Không thể bắt đầu ghi âm. Vui lòng thử lại.');
+      Alert.alert('Lỗi', `Không thể bắt đầu ghi âm: ${error instanceof Error ? error.message : 'Vui lòng thử lại.'}`);
       if (onCancel) onCancel();
     }
   };
 
   const stopRecording = async () => {
     try {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
+      // Clear timer trước khi stop
+      clearTimer();
 
-      if (recorder && recorder.isRecording) {
+      if (recorder) {
+        const status = recorder.getStatus();
+        if (status.isRecording) {
+          try {
         await recorder.stop();
         const uri = recorder.uri;
         audioUriRef.current = uri || null;
+          } catch (stopError) {
+            console.error('Error stopping recorder:', stopError);
+            // Vẫn tiếp tục để cleanup state
+          }
+        }
       }
 
       setIsRecording(false);
@@ -194,10 +289,7 @@ export default function VoiceRecordingModal({
           await startRecording();
         }
         setIsPaused(false);
-        // Restart timer
-        intervalRef.current = setInterval(() => {
-          setRecordingTime(prev => prev + 1);
-        }, 1000);
+        // Timer sẽ tự động start lại qua useEffect khi isPaused = false
       } catch (error) {
         console.error('Failed to resume recording:', error);
       }
@@ -208,10 +300,8 @@ export default function VoiceRecordingModal({
           recorder.pause();
         }
         setIsPaused(true);
-        if (intervalRef.current) {
-          clearInterval(intervalRef.current);
-          intervalRef.current = null;
-        }
+        // Timer sẽ tự động dừng qua useEffect khi isPaused = true
+        clearTimer();
       } catch (error) {
         console.error('Failed to pause recording:', error);
       }

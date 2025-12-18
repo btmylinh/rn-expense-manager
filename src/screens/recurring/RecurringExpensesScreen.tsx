@@ -1,6 +1,6 @@
 // screens/recurring/RecurringExpensesScreen.tsx
-import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, RefreshControl, Alert, TouchableOpacity, Platform } from 'react-native';
+import React, { useEffect, useState, useRef } from 'react';
+import { View, Text, ScrollView, StyleSheet, RefreshControl, Alert, TouchableOpacity, Platform, FlatList } from 'react-native';
 import { Card, Button, FAB, IconButton, TextInput, List, Switch, Divider } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
@@ -63,6 +63,9 @@ export default function RecurringExpensesScreen() {
 	const [showPredictionDialog, setShowPredictionDialog] = useState(false);
 	const [predictions, setPredictions] = useState<any>(null);
 	const [loadingPrediction, setLoadingPrediction] = useState(false);
+	const lastDetectCallRef = useRef<number>(0); // Track last detect API call timestamp
+	const DETECT_COOLDOWN_MS = 10000; // 10 seconds cooldown between detect calls
+	const pendingDetectedPatternsRef = useRef<any[] | null>(null); // Store patterns before opening modal
 	
 	// Form state
 	const [formName, setFormName] = useState('');
@@ -85,9 +88,11 @@ const [pendingPattern, setPendingPattern] = useState<any>(null); // Pattern đan
 const [patternWalletPickerId, setPatternWalletPickerId] = useState<string | number | null>(null);
 
 	useEffect(() => {
+		if (userId) {
 		loadCategories();
+		}
 		loadWallets();
-	}, []);
+	}, [userId]);
 
 	useFocusEffect(
 		React.useCallback(() => {
@@ -96,6 +101,17 @@ const [patternWalletPickerId, setPatternWalletPickerId] = useState<string | numb
 			}
 		}, [categories.length])
 	);
+
+	// Debug: Log khi detectedPatterns thay đổi
+	useEffect(() => {
+		console.log('[RecurringExpensesScreen] detectedPatterns state changed:', {
+			length: detectedPatterns.length,
+			isArray: Array.isArray(detectedPatterns),
+			detectingPatterns,
+			showDetectDialog,
+			firstPattern: detectedPatterns[0]?.name || 'none'
+		});
+	}, [detectedPatterns, detectingPatterns, showDetectDialog]);
 
 	const getSuggestedWalletId = React.useCallback((): number | null => {
 		return (
@@ -117,8 +133,10 @@ const [patternWalletPickerId, setPatternWalletPickerId] = useState<string | numb
 		try {
 			const response = await userCategoryApi.getUserCategories();
 			const categoriesData = response.data?.data || [];
-			// Filter only expense categories (type = 2)
-			const expenseCategories = categoriesData.filter((cat: any) => cat.type === 2);
+			// Filter: chỉ lấy expense categories (type = 2) và có user_id = userId (không null)
+			const expenseCategories = categoriesData.filter(
+				(cat: any) => cat.type === 2 && cat.user_id !== null && cat.user_id !== undefined && cat.user_id === userId
+			);
 			setCategories(expenseCategories);
 			if (expenseCategories.length > 0 && formCategoryId === 0) {
 				setFormCategoryId(expenseCategories[0].id);
@@ -146,12 +164,11 @@ const [patternWalletPickerId, setPatternWalletPickerId] = useState<string | numb
 			const response = await walletApi.getWallets();
 			const walletsData = response.data?.wallets || [];
 			setWallets(walletsData);
-			// Set default wallet
-			const defaultWallet = walletsData.find((w: any) => w.is_default === 1);
-			if (defaultWallet && formWalletId === 0) {
+			// Đảm bảo formWalletId KHÔNG BAO GIỜ = 0 khi có ví
+			if (formWalletId === 0 && walletsData.length > 0) {
+				const defaultWallet =
+					walletsData.find((w: any) => w.is_default === 1) || walletsData[0];
 				setFormWalletId(defaultWallet.id);
-			} else if (walletsData.length > 0 && formWalletId === 0) {
-				setFormWalletId(walletsData[0].id);
 			}
 		} catch (error) {
 			console.error('Error loading wallets:', error);
@@ -198,37 +215,72 @@ const [patternWalletPickerId, setPatternWalletPickerId] = useState<string | numb
 	};
 
 	const handleDetectPatterns = async () => {
+		// Rate limiting: Kiểm tra cooldown
+		const now = Date.now();
+		const timeSinceLastCall = now - lastDetectCallRef.current;
+		if (timeSinceLastCall < DETECT_COOLDOWN_MS) {
+			const remainingSeconds = Math.ceil((DETECT_COOLDOWN_MS - timeSinceLastCall) / 1000);
+			Alert.alert(
+				'Vui lòng đợi',
+				`Bạn cần đợi ${remainingSeconds} giây trước khi phát hiện lại. Tính năng này sử dụng AI và cần thời gian xử lý.`
+			);
+			return;
+		}
+
 		setDetectingPatterns(true);
+		setShowDetectDialog(true); // Mở modal ngay để hiển thị loading state
+		lastDetectCallRef.current = now; // Update last call timestamp
+		
+		// Đảm bảo wallets đã được load trước khi normalize patterns
+		if (wallets.length === 0) {
+			await loadWallets();
+		}
+		
 		try {
 			const response = await recurringExpenseApi.detectRecurringExpenses();
+			console.log('[RecurringExpensesScreen] Detect API response:', JSON.stringify(response.data, null, 2));
+			
 			// Response format: { data: { detected: [...], count: number } }
 			const detected = response.data?.data?.detected || response.data?.data || [];
+			console.log('[RecurringExpensesScreen] Detected patterns (raw):', detected);
+			console.log('[RecurringExpensesScreen] Current wallets:', wallets.length);
+			
 			if (!Array.isArray(detected)) {
-				console.warn('Detected patterns is not an array:', detected);
+				console.warn('[RecurringExpensesScreen] Detected patterns is not an array:', detected);
 				setDetectedPatterns([]);
-				setShowDetectDialog(true);
+				setDetectingPatterns(false);
 				return;
 			}
+
+			// Đảm bảo wallets đã có trước khi normalize
+			const currentWallets = wallets.length > 0 ? wallets : await walletApi.getWallets().then(r => r.data?.wallets || []);
+			const suggestedWalletId = currentWallets.find((w: any) => w.is_default === 1 || w.isDefault)?.id || currentWallets[0]?.id || null;
 
 			const normalized = detected.map((pattern: any, index: number) => ({
 				...pattern,
 				tempId: pattern.id ?? `pattern-${Date.now()}-${index}`,
-				selectedWalletId: pattern.selectedWalletId ?? getSuggestedWalletId(),
+				selectedWalletId: pattern.selectedWalletId ?? suggestedWalletId,
 			}));
+			
+			console.log('[RecurringExpensesScreen] Normalized patterns:', normalized);
+			console.log('[RecurringExpensesScreen] Normalized patterns count:', normalized.length);
+			
+			// Set state trong một batch để đảm bảo React re-render đúng
 			setDetectedPatterns(normalized);
-			setShowDetectDialog(true);
+			setDetectingPatterns(false);
+			
+			console.log('[RecurringExpensesScreen] State updated - detectedPatterns.length:', normalized.length);
 
 			if (normalized.length === 0) {
 				// empty state handles message
 			}
 		} catch (error: any) {
-			console.error('Error detecting patterns:', error);
-			const errorMessage = error?.response?.data?.message || 'Không thể phát hiện chi tiêu định kỳ';
+			console.error('[RecurringExpensesScreen] Error detecting patterns:', error);
+			const errorMessage = getErrorMessage(error, 'Không thể phát hiện chi tiêu định kỳ');
 			Alert.alert('Lỗi', errorMessage);
 			setDetectedPatterns([]);
-			setShowDetectDialog(false);
-		} finally {
 			setDetectingPatterns(false);
+			setShowDetectDialog(false);
 		}
 	};
 
@@ -238,10 +290,50 @@ const [patternWalletPickerId, setPatternWalletPickerId] = useState<string | numb
 		try {
 			const response = await recurringExpenseApi.predictNextMonthExpenses();
 			const predictionsData = response.data?.data || null;
-			setPredictions(predictionsData);
+		
+		// Normalize dữ liệu để tránh crash nếu BE trả về format khác kỳ vọng
+		if (!predictionsData || typeof predictionsData !== 'object') {
+			setPredictions(null);
+			return;
+		}
+
+		const summary = (predictionsData as any).summary;
+		const hasValidSummary =
+			summary &&
+			typeof summary.totalAmount === 'number' &&
+			!Number.isNaN(summary.totalAmount);
+
+		if (!hasValidSummary) {
+			// Dùng format fallback thân thiện cho FE
+			setPredictions({
+				summary: {
+					month: new Date().toLocaleDateString('vi-VN', { month: '2-digit', year: 'numeric' }),
+					totalAmount: 0,
+					totalCount: 0,
+					byCategory: {},
+				},
+				expenses: [],
+				__meta: { isStub: true },
+			});
+		} else {
+			// Đảm bảo byCategory luôn là object
+			const safeByCategory =
+				(summary.byCategory && typeof summary.byCategory === 'object')
+					? summary.byCategory
+					: {};
+
+			setPredictions({
+				...predictionsData,
+				summary: {
+					...summary,
+					byCategory: safeByCategory,
+				},
+			});
+		}
 		} catch (error) {
 			console.error('Error predicting expenses:', error);
-			Alert.alert('Lỗi', 'Không thể dự báo chi tiêu');
+			const errorMessage = getErrorMessage(error, 'Không thể dự báo chi tiêu');
+			Alert.alert('Lỗi', errorMessage);
 		} finally {
 			setLoadingPrediction(false);
 		}
@@ -295,11 +387,18 @@ const [patternWalletPickerId, setPatternWalletPickerId] = useState<string | numb
 		setFormNote(pattern.reason || '');
 		setFormWalletId(walletId);
 		setShowAddDialog(true);
-		setShowDetectDialog(false);
+		// KHÔNG đóng modal detect - để người dùng có thể thêm nhiều pattern
+		// setShowDetectDialog(false);
 	};
 
-	const handlePatternWalletChange = (patternId: string | number, walletId: number | null) => {
+	const handlePatternWalletChange = async (patternId: string | number, walletId: number | null) => {
 		if (walletId == null) return;
+		
+		// Đảm bảo wallets đã được load để hiển thị tên ví
+		if (wallets.length === 0) {
+			await loadWallets();
+		}
+		
 		setDetectedPatterns(prev =>
 			Array.isArray(prev)
 				? prev.map(pattern =>
@@ -311,21 +410,38 @@ const [patternWalletPickerId, setPatternWalletPickerId] = useState<string | numb
 
 	const createRecurringExpenseFromPattern = async (pattern: any, walletId: number) => {
 		try {
+			// Parse next_due_date - có thể là string hoặc Date
+			let nextDueDate = pattern.next_due_date || pattern.nextDueDate;
+			if (typeof nextDueDate === 'string') {
+				// Nếu là string, parse thành Date rồi format lại
+				const parsedDate = new Date(nextDueDate);
+				if (isNaN(parsedDate.getTime())) {
+					// Nếu parse lỗi, dùng ngày hôm nay
+					nextDueDate = new Date().toISOString().split('T')[0];
+				} else {
+					nextDueDate = parsedDate.toISOString().split('T')[0];
+				}
+			} else if (nextDueDate instanceof Date) {
+				nextDueDate = nextDueDate.toISOString().split('T')[0];
+			} else {
+				// Nếu không có hoặc không hợp lệ, dùng ngày hôm nay
+				nextDueDate = new Date().toISOString().split('T')[0];
+			}
+
 			await recurringExpenseApi.createRecurringExpense({
 				wallet_id: walletId,
 				name: pattern.name,
 				amount: pattern.amount,
 				user_category_id: pattern.user_category_id,
 				frequency: pattern.frequency,
-				start_date: pattern.next_due_date || pattern.nextDueDate,
-				next_due_date: pattern.next_due_date || pattern.nextDueDate,
+				next_due_date: nextDueDate,
 				reminder_days_before: 2,
 				notes: `Phát hiện tự động (${pattern.evidence_count || pattern.occurrences || 0} lần, độ tin cậy ${pattern.confidence || 0}%)${pattern.reason ? `. ${pattern.reason}` : ''}`
 			});
 			
 			Alert.alert('Thành công', 'Đã thêm chi tiêu định kỳ');
 			loadExpenses();
-			// Remove from detected patterns
+			// Xóa pattern đã thêm khỏi danh sách - KHÔNG đóng modal
 			setDetectedPatterns(prev =>
 				Array.isArray(prev)
 					? prev.filter(p =>
@@ -364,8 +480,12 @@ const [patternWalletPickerId, setPatternWalletPickerId] = useState<string | numb
 		setFormName('');
 		setFormAmount('');
 		setFormCategoryId(categories.length > 0 ? categories[0].id : 0);
-		const defaultWallet = wallets.find((w: any) => w.is_default === 1);
-		setFormWalletId(defaultWallet?.id || (wallets.length > 0 ? wallets[0].id : 0));
+		// KHÔNG reset formWalletId - giữ nguyên wallet đã chọn hoặc để loadWallets() tự set default
+		// Nếu formWalletId === 0, loadWallets() sẽ tự động set default wallet
+		if (formWalletId === 0 && wallets.length > 0) {
+			const defaultWallet = wallets.find((w: any) => w.is_default === 1) || wallets[0];
+			setFormWalletId(defaultWallet.id);
+		}
 		setFormFrequency('monthly');
 		setFormNextDueDate(new Date());
 		setFormReminderDays('1');
@@ -384,20 +504,33 @@ const [patternWalletPickerId, setPatternWalletPickerId] = useState<string | numb
 			return;
 		}
 
+		// Validation: next_due_date không được là quá khứ
+		const today = new Date();
+		today.setHours(0, 0, 0, 0);
+		const selectedDate = new Date(formNextDueDate);
+		selectedDate.setHours(0, 0, 0, 0);
+		if (selectedDate < today) {
+			Alert.alert('Lỗi', 'Ngày đến hạn không được là quá khứ. Vui lòng chọn ngày hôm nay hoặc sau đó.');
+			return;
+		}
+
 		try {
+			// Format next_due_date đúng chuẩn YYYY-MM-DD
+			const nextDueDateStr = formNextDueDate.toISOString().split('T')[0];
+			
 			const data = {
 				wallet_id: formWalletId,
 				name: formName.trim(),
 				amount: Math.abs(amount), // Ensure positive amount
 				user_category_id: formCategoryId,
 				frequency: formFrequency,
-				start_date: formNextDueDate.toISOString().split('T')[0],
-				next_due_date: formNextDueDate.toISOString().split('T')[0],
+				next_due_date: nextDueDateStr,
 				reminder_days_before: parseInt(formReminderDays) || 1,
-				notes: formNote.trim() || undefined,
+				note: formNote.trim() || undefined, // Dùng 'note' thay vì 'notes'
 				is_active: 1,
 			};
 
+			console.log('[RecurringExpensesScreen] Creating expense with data:', data);
 			await recurringExpenseApi.createRecurringExpense(data);
 			
 				Alert.alert('Thành công', 'Đã thêm chi tiêu định kỳ');
@@ -421,6 +554,16 @@ const [patternWalletPickerId, setPatternWalletPickerId] = useState<string | numb
 		const amount = parseFloat(formAmount);
 		if (isNaN(amount) || amount <= 0) {
 			Alert.alert('Lỗi', 'Số tiền không hợp lệ');
+			return;
+		}
+
+		// Validation: next_due_date không được là quá khứ
+		const today = new Date();
+		today.setHours(0, 0, 0, 0);
+		const selectedDate = new Date(formNextDueDate);
+		selectedDate.setHours(0, 0, 0, 0);
+		if (selectedDate < today) {
+			Alert.alert('Lỗi', 'Ngày đến hạn không được là quá khứ. Vui lòng chọn ngày hôm nay hoặc sau đó.');
 			return;
 		}
 
@@ -524,10 +667,19 @@ const [patternWalletPickerId, setPatternWalletPickerId] = useState<string | numb
 		.reduce((sum, e) => sum + e.amount, 0);
 
 	const selectedCategory = categories.find(c => c.id === formCategoryId);
+	
+	// Derive selectedWallet giống selectedCategory - đảm bảo an toàn khi data load chậm
+	const selectedWallet = React.useMemo(
+		() => wallets.find(w => w.id === formWalletId),
+		[wallets, formWalletId]
+	);
 
 	return (
 		<View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-			<AppBar title="Chi tiêu định kỳ" />
+			<AppBar 
+				title="Chi tiêu định kỳ" 
+				onBack={() => navigation.goBack()}
+			/>
 			
 			<ScrollView
 				refreshControl={
@@ -847,7 +999,7 @@ const [patternWalletPickerId, setPatternWalletPickerId] = useState<string | numb
 									/>
 									<View style={styles.selectButtonText}>
 										<Text style={[styles.selectButtonValue, { color: theme.colors.onSurface }]}>
-											{wallets.find(w => w.id === formWalletId)?.name || 'Chọn ví'}
+											{selectedWallet ? selectedWallet.name : 'Chọn ví'}
 										</Text>
 									</View>
 								</View>
@@ -976,9 +1128,20 @@ const [patternWalletPickerId, setPatternWalletPickerId] = useState<string | numb
 									value={formNextDueDate}
 									mode="date"
 									display="default"
+									minimumDate={new Date()} // Không cho chọn quá khứ
 									onChange={(event, date) => {
 										setShowDatePicker(false);
-										if (date) setFormNextDueDate(date);
+										if (date) {
+											const today = new Date();
+											today.setHours(0, 0, 0, 0);
+											const selectedDate = new Date(date);
+											selectedDate.setHours(0, 0, 0, 0);
+											if (selectedDate < today) {
+												Alert.alert('Lỗi', 'Ngày đến hạn không được là quá khứ. Vui lòng chọn ngày hôm nay hoặc sau đó.');
+												return;
+											}
+											setFormNextDueDate(date);
+										}
 									}}
 								/>
 							)}
@@ -1063,20 +1226,19 @@ const [patternWalletPickerId, setPatternWalletPickerId] = useState<string | numb
 				</ScrollView>
 			</BottomSheet>
 
-				{/* Detected Patterns BottomSheet */}
+			{/* Detected Patterns BottomSheet - Chỉ đóng khi nhấn close */}
 				<BottomSheet
 					visible={showDetectDialog}
-					onDismiss={() => setShowDetectDialog(false)}
+				onDismiss={() => {
+					// Chỉ đóng khi người dùng nhấn close button hoặc swipe down
+					setShowDetectDialog(false);
+				}}
 					title="Chi tiêu AI phát hiện được"
 					titleIcon="auto-fix"
 					height="80%"
-				>
-					<ScrollView 
-						style={styles.bottomSheetScroll}
-						contentContainerStyle={styles.bottomSheetContent}
 					>
 						{detectingPatterns ? (
-							<View style={styles.emptyDetected}>
+						<View style={[styles.emptyDetected, { flex: 1, justifyContent: 'center', alignItems: 'center' }]}>
 								<MaterialCommunityIcons 
 									name="auto-fix" 
 									size={48} 
@@ -1087,8 +1249,23 @@ const [patternWalletPickerId, setPatternWalletPickerId] = useState<string | numb
 									Đang phân tích giao dịch...
 								</Text>
 							</View>
-						) : !Array.isArray(detectedPatterns) || detectedPatterns.length === 0 ? (
-							<View style={styles.emptyDetected}>
+					) : !Array.isArray(detectedPatterns) ? (
+						<View style={[styles.emptyDetected, { flex: 1, justifyContent: 'center', alignItems: 'center' }]}>
+							<MaterialCommunityIcons 
+								name="alert-circle-outline" 
+								size={48} 
+								color={theme.colors.error} 
+								style={{ marginBottom: 12 }}
+							/>
+							<Text style={{ color: theme.colors.error, fontSize: 15 }}>
+								Lỗi: Dữ liệu không hợp lệ
+							</Text>
+							<Text style={{ color: theme.colors.onSurfaceVariant, fontSize: 13, marginTop: 8, textAlign: 'center' }}>
+								detectedPatterns type: {typeof detectedPatterns}
+							</Text>
+						</View>
+					) : detectedPatterns.length === 0 ? (
+						<View style={[styles.emptyDetected, { flex: 1, justifyContent: 'center', alignItems: 'center' }]}>
 								<MaterialCommunityIcons 
 									name="chart-line-variant" 
 									size={48} 
@@ -1103,86 +1280,107 @@ const [patternWalletPickerId, setPatternWalletPickerId] = useState<string | numb
 								</Text>
 							</View>
 						) : (
-							<View style={styles.patternsList}>
-								{detectedPatterns.map((pattern, index) => {
+						<FlatList
+							data={detectedPatterns}
+							keyExtractor={(item: any, index: number) => item.tempId ?? `pattern-${index}`}
+							renderItem={({ item: pattern, index }: { item: any; index: number }) => {
 									const walletName = getWalletDisplayName(pattern.selectedWalletId);
 									return (
-									<Card key={pattern.tempId ?? index} style={[styles.patternCard, { backgroundColor: theme.colors.surface }]}>
-										<Card.Content>
-											<View style={styles.patternCardContent}>
-												<View style={[styles.patternIconContainer, { backgroundColor: theme.colors.primaryContainer }]}>
+										<Card 
+											key={pattern.tempId ?? index} 
+											style={[styles.patternCard, { backgroundColor: theme.colors.surface, marginBottom: 12 }]}
+										>
+											<Card.Content style={styles.patternCardContentCompact}>
+												{/* Header: Icon + Name + Amount */}
+												<View style={styles.patternHeader}>
+													<View style={[styles.patternIconContainerCompact, { backgroundColor: theme.colors.primaryContainer }]}>
 													<MaterialCommunityIcons 
 														name="auto-fix"
-														size={24}
+															size={20}
 														color={theme.colors.onPrimaryContainer}
 													/>
 												</View>
-												<View style={styles.patternCardInfo}>
-													<Text style={[styles.patternCardName, { color: theme.colors.onSurface }]}>
+													<View style={styles.patternHeaderInfo}>
+														<Text style={[styles.patternCardNameCompact, { color: theme.colors.onSurface }]} numberOfLines={1}>
 														{pattern.name}
 													</Text>
-													<Text style={[styles.patternCardMeta, { color: theme.colors.onSurfaceVariant }]}>
-														{pattern.amount?.toLocaleString('vi-VN') || 0} đ • {getFrequencyLabel(pattern.frequency)}
-														{pattern.category_name && ` • ${pattern.category_name}`}
+														<Text style={[styles.patternAmountCompact, { color: theme.colors.primary }]}>
+															{pattern.amount?.toLocaleString('vi-VN') || 0} đ
 													</Text>
-													{pattern.reason && (
-														<Text style={[styles.patternReason, { color: theme.colors.onSurfaceVariant }]}>
-															{pattern.reason}
-														</Text>
-													)}
-													<View style={styles.patternCardBadges}>
-														<View style={[styles.confidenceBadge, { backgroundColor: theme.colors.primaryContainer }]}>
-															<Text style={[styles.confidenceText, { color: theme.colors.onPrimaryContainer }]}>
-																{pattern.confidence || 0}% tin cậy
-															</Text>
-														</View>
-														<Text style={[styles.patternOccurrences, { color: theme.colors.onSurfaceVariant }]}>
-															{pattern.evidence_count || pattern.occurrences || 0} lần xuất hiện
+													</View>
+													<View style={[styles.confidenceBadgeCompact, { backgroundColor: theme.colors.primaryContainer }]}>
+														<Text style={[styles.confidenceTextCompact, { color: theme.colors.onPrimaryContainer }]}>
+															{pattern.confidence || 0}%
 														</Text>
 													</View>
 												</View>
-												<View style={styles.patternWalletRow}>
-													<TouchableOpacity
-														style={[styles.patternWalletButton, { borderColor: theme.colors.outline }]}
-														onPress={() => setPatternWalletPickerId(pattern.tempId ?? index)}
-													>
-														<MaterialCommunityIcons name="wallet-outline" size={20} color={theme.colors.primary} />
-														<View style={styles.patternWalletText}>
-															<Text style={[styles.patternWalletLabel, { color: theme.colors.onSurfaceVariant }]}>
-																Ví lưu đề xuất
-															</Text>
-															<Text style={[styles.patternWalletValue, { color: theme.colors.onSurface }]}>
-																{walletName}
+
+												{/* Meta: Frequency + Category */}
+												<View style={styles.patternMetaRow}>
+													<View style={styles.patternMetaItem}>
+														<MaterialCommunityIcons name="repeat" size={14} color={theme.colors.onSurfaceVariant} />
+														<Text style={[styles.patternMetaText, { color: theme.colors.onSurfaceVariant }]}>
+															{getFrequencyLabel(pattern.frequency)}
 															</Text>
 														</View>
-														<MaterialCommunityIcons name="chevron-right" size={20} color={theme.colors.onSurfaceVariant} />
-													</TouchableOpacity>
+													{pattern.category_name && (
+														<View style={styles.patternMetaItem}>
+															<MaterialCommunityIcons name="tag-outline" size={14} color={theme.colors.onSurfaceVariant} />
+															<Text style={[styles.patternMetaText, { color: theme.colors.onSurfaceVariant }]} numberOfLines={1}>
+																{pattern.category_name}
+														</Text>
+													</View>
+													)}
+													<View style={styles.patternMetaItem}>
+														<MaterialCommunityIcons name="chart-line" size={14} color={theme.colors.onSurfaceVariant} />
+														<Text style={[styles.patternMetaText, { color: theme.colors.onSurfaceVariant }]}>
+															{pattern.evidence_count || 0} lần
+														</Text>
 												</View>
-												<View style={styles.patternActions}>
+												</View>
+
+												{/* Wallet Selector - Compact */}
+													<TouchableOpacity
+													style={[styles.patternWalletButtonCompact, { borderColor: theme.colors.outline }]}
+														onPress={() => setPatternWalletPickerId(pattern.tempId ?? index)}
+													>
+													<MaterialCommunityIcons name="wallet-outline" size={16} color={theme.colors.primary} />
+													<Text style={[styles.patternWalletValueCompact, { color: theme.colors.onSurface }]} numberOfLines={1}>
+														{walletName || 'Chọn ví'}
+															</Text>
+													<MaterialCommunityIcons name="chevron-down" size={16} color={theme.colors.onSurfaceVariant} />
+													</TouchableOpacity>
+
+												{/* Actions - Compact */}
+												<View style={styles.patternActionsCompact}>
 													<Button
 														mode="outlined"
 														compact
 														onPress={() => openPatternEditor(pattern)}
-														style={styles.patternEditButton}
+														style={[styles.patternActionButton, { flex: 1, marginRight: 6 }]}
+														labelStyle={styles.patternActionLabel}
 													>
-														Sửa trước khi thêm
+														Sửa
 													</Button>
 													<Button
 														mode="contained"
 														compact
 														onPress={() => handleAddFromPattern(pattern)}
-														style={styles.patternAddButton}
+														style={[styles.patternActionButton, { flex: 1, marginLeft: 6 }]}
+														labelStyle={styles.patternActionLabel}
 													>
-														Thêm nhanh
+														Thêm
 													</Button>
-												</View>
 											</View>
 										</Card.Content>
 									</Card>
-								)})}
-							</View>
+									);
+								}}
+								contentContainerStyle={styles.patternsListContent}
+								style={{ flex: 1 }}
+								showsVerticalScrollIndicator={false}
+							/>
 						)}
-					</ScrollView>
 				</BottomSheet>
 
 				{/* Prediction BottomSheet */}
@@ -1213,6 +1411,41 @@ const [patternWalletPickerId, setPatternWalletPickerId] = useState<string | numb
 						) : predictions ? (
 							<View style={styles.predictionContent}>
 								{/* Summary Card - Redesigned */}
+								{(() => {
+									const summary = (predictions as any)?.summary;
+									const hasSummary =
+										summary &&
+										typeof summary.totalAmount === 'number' &&
+										!Number.isNaN(summary.totalAmount);
+
+									if (!hasSummary || summary.totalAmount === 0) {
+										// Empty state hoặc trường hợp BE còn là stub
+										return (
+											<Card style={[styles.predictionSummaryCard, { backgroundColor: theme.colors.surfaceVariant }]}>
+												<Card.Content style={styles.predictionSummaryContent}>
+													<View style={styles.predictionSummaryHeader}>
+														<View style={[styles.predictionIconContainer, { backgroundColor: theme.colors.primary }]}>
+															<MaterialCommunityIcons 
+																name="chart-line-variant" 
+																size={32} 
+																color="#FFFFFF" 
+															/>
+														</View>
+														<View style={styles.predictionSummaryInfo}>
+															<Text style={[styles.predictionLabel, { color: theme.colors.onSurfaceVariant }]}>
+																Tính năng dự báo đang trong giai đoạn thử nghiệm, chưa có dữ liệu.
+															</Text>
+															<Text style={[styles.predictionTotal, { color: theme.colors.primary }]}>
+																0 đ
+															</Text>
+														</View>
+													</View>
+												</Card.Content>
+											</Card>
+										);
+									}
+
+									return (
 								<Card style={[styles.predictionSummaryCard, { backgroundColor: theme.colors.surfaceVariant}]}>
 									<Card.Content style={styles.predictionSummaryContent}>
 										<View style={styles.predictionSummaryHeader}>
@@ -1225,10 +1458,10 @@ const [patternWalletPickerId, setPatternWalletPickerId] = useState<string | numb
 											</View>
 											<View style={styles.predictionSummaryInfo}>
 												<Text style={[styles.predictionLabel, { color: theme.colors.onSurfaceVariant }]}>
-													Tổng dự kiến tháng {predictions.summary.month}
+															Tổng dự kiến tháng {summary.month}
 												</Text>
 												<Text style={[styles.predictionTotal, { color: theme.colors.primary }]}>
-													{predictions.summary.totalAmount.toLocaleString('vi-VN')} đ
+															{summary.totalAmount.toLocaleString('vi-VN')} đ
 												</Text>
 												<View style={styles.predictionMetaRow}>
 													<View style={[styles.predictionMetaBadge, { backgroundColor: theme.colors.surface }]}>
@@ -1238,7 +1471,7 @@ const [patternWalletPickerId, setPatternWalletPickerId] = useState<string | numb
 															color={theme.colors.primary} 
 														/>
 														<Text style={[styles.predictionMetaBadgeText, { color: theme.colors.onSurface }]}>
-															{predictions.summary.totalCount} khoản
+																	{summary.totalCount} khoản
 														</Text>
 													</View>
 													<View style={[styles.predictionMetaBadge, { backgroundColor: theme.colors.surface }]}>
@@ -1248,7 +1481,7 @@ const [patternWalletPickerId, setPatternWalletPickerId] = useState<string | numb
 															color={theme.colors.primary} 
 														/>
 														<Text style={[styles.predictionMetaBadgeText, { color: theme.colors.onSurface }]}>
-															{predictions.summary.month}
+																	{summary.month}
 														</Text>
 													</View>
 												</View>
@@ -1256,9 +1489,22 @@ const [patternWalletPickerId, setPatternWalletPickerId] = useState<string | numb
 										</View>
 									</Card.Content>
 								</Card>
+									);
+								})()}
 
 								{/* Category Breakdown - Redesigned */}
-								{Object.keys(predictions.summary.byCategory).length > 0 && (
+								{(() => {
+									const summary = (predictions as any)?.summary;
+									const byCategory = summary?.byCategory && typeof summary.byCategory === 'object'
+										? summary.byCategory
+										: {};
+									const entries = Object.entries(byCategory);
+
+									if (!entries.length) {
+										return null;
+									}
+
+									return (
 									<View style={styles.predictionCategoriesSection}>
 										<View style={styles.predictionSectionHeader}>
 											<MaterialCommunityIcons 
@@ -1272,7 +1518,7 @@ const [patternWalletPickerId, setPatternWalletPickerId] = useState<string | numb
 										</View>
 										
 										<View style={styles.predictionCategoriesList}>
-											{Object.entries(predictions.summary.byCategory)
+											{entries
 												.sort(([, a]: [string, any], [, b]: [string, any]) => b - a)
 												.map(([category, amount]: [string, any], index) => {
 													// Map category name to icon
@@ -1343,7 +1589,7 @@ const [patternWalletPickerId, setPatternWalletPickerId] = useState<string | numb
 												})}
 										</View>
 									</View>
-								)}
+								)})()}
 								</View>
 							) : (
 								<View style={styles.emptyPrediction}>
@@ -1393,8 +1639,7 @@ const [patternWalletPickerId, setPatternWalletPickerId] = useState<string | numb
 			{/* Wallet Select Modal */}
 			<WalletSelectModal
 				visible={showWalletModal}
-				wallets={wallets}
-				selectedWalletId={formWalletId}
+				selectedWalletId={formWalletId && formWalletId > 0 ? formWalletId : null}
 				onSelect={walletId => {
 					if (walletId == null) return;
 					setFormWalletId(walletId);
@@ -1410,24 +1655,25 @@ const [patternWalletPickerId, setPatternWalletPickerId] = useState<string | numb
 					setPendingPattern(null); // Clear pending pattern khi đóng modal
 				}}
 				title="Chọn ví"
+				showBalance={true}
 			/>
 
 			<WalletSelectModal
 				visible={patternWalletPickerId !== null}
-				wallets={wallets}
 				selectedWalletId={
 					patternWalletPickerId != null
 						? detectedPatterns.find(p => p.tempId === patternWalletPickerId)?.selectedWalletId ?? null
 						: null
 				}
-				onSelect={walletId => {
+				onSelect={async (walletId) => {
 					if (patternWalletPickerId != null && walletId != null) {
-						handlePatternWalletChange(patternWalletPickerId, walletId);
+						await handlePatternWalletChange(patternWalletPickerId, walletId);
 					}
 					setPatternWalletPickerId(null);
 				}}
 				onDismiss={() => setPatternWalletPickerId(null)}
 				title="Chọn ví lưu chi tiêu này"
+				showBalance={true}
 			/>
 		</View>
 	);
@@ -1690,6 +1936,14 @@ const styles = StyleSheet.create({
 	input: {
 		marginBottom: 12,
 	},
+	hintText: {
+		fontSize: 12,
+		marginTop: 4,
+		marginBottom: 12,
+		marginHorizontal: 4,
+		lineHeight: 16,
+		fontStyle: 'italic',
+	},
 	menuButton: {
 		justifyContent: 'flex-start',
 	},
@@ -1796,6 +2050,92 @@ const styles = StyleSheet.create({
 	},
 	confidenceText: {
 		fontSize: 12,
+		fontWeight: '600',
+	},
+	// Compact pattern card styles
+	patternsListContent: {
+		paddingHorizontal: 16,
+		paddingVertical: 8,
+	},
+	patternCardContentCompact: {
+		paddingVertical: 12,
+		paddingHorizontal: 12,
+	},
+	patternHeader: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		marginBottom: 10,
+	},
+	patternIconContainerCompact: {
+		width: 36,
+		height: 36,
+		borderRadius: 18,
+		alignItems: 'center',
+		justifyContent: 'center',
+		marginRight: 10,
+	},
+	patternHeaderInfo: {
+		flex: 1,
+	},
+	patternCardNameCompact: {
+		fontSize: 15,
+		fontWeight: '600',
+		marginBottom: 2,
+	},
+	patternAmountCompact: {
+		fontSize: 16,
+		fontWeight: '700',
+	},
+	confidenceBadgeCompact: {
+		paddingHorizontal: 8,
+		paddingVertical: 4,
+		borderRadius: 8,
+		minWidth: 40,
+		alignItems: 'center',
+	},
+	confidenceTextCompact: {
+		fontSize: 11,
+		fontWeight: '600',
+	},
+	patternMetaRow: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		marginBottom: 10,
+		gap: 12,
+		flexWrap: 'wrap',
+	},
+	patternMetaItem: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 4,
+	},
+	patternMetaText: {
+		fontSize: 12,
+	},
+	patternWalletButtonCompact: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		borderWidth: 1,
+		borderRadius: 8,
+		paddingVertical: 8,
+		paddingHorizontal: 10,
+		marginBottom: 10,
+		gap: 8,
+	},
+	patternWalletValueCompact: {
+		fontSize: 13,
+		fontWeight: '500',
+		flex: 1,
+	},
+	patternActionsCompact: {
+		flexDirection: 'row',
+		gap: 8,
+	},
+	patternActionButton: {
+		minHeight: 36,
+	},
+	patternActionLabel: {
+		fontSize: 13,
 		fontWeight: '600',
 	},
 	loadingPrediction: {

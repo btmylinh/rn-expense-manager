@@ -391,8 +391,8 @@ export const fakeApi = {
 		const user = users.find(u => u.email === email && u.password === password);
 		
 		if (user) {
-			// Kiểm tra nếu tài khoản có bật 2FA (kiểm tra cả 1 và true)
-			const has2FA = user.is_2fa === 1 || (typeof user.is_2fa === 'number' && user.is_2fa > 0) || user.is_2fa === true;
+			// Kiểm tra nếu tài khoản có bật 2FA (is_2fa là number: 1 = enabled, 0 = disabled)
+			const has2FA = user.is_2fa === 1 || (typeof user.is_2fa === 'number' && user.is_2fa > 0);
 			
 			if (has2FA) {
 				// Gửi mã xác thực qua email

@@ -53,7 +53,23 @@ apiClient.interceptors.response.use(
 		return response;
 	},
 	(error: AxiosError) => {
-		// Network errors or other system errors
+		// Check if this is a handled error from backend (has code and message)
+		const responseData = error.response?.data;
+		if (responseData && typeof responseData === 'object' && 'code' in responseData && 'message' in responseData) {
+			// This is a handled error from backend, not a system error
+			// Backend intentionally returned this error with a clear message
+			if (__DEV__) {
+				console.log(`[API Handled Error] ${error.config?.method?.toUpperCase()} ${error.config?.url}`, {
+					code: responseData.code,
+					message: responseData.message,
+					status: error.response?.status,
+				});
+			}
+			// Still reject so frontend can catch and display the message
+			return Promise.reject(error);
+		}
+		
+		// Network errors or other system errors (no clear message from backend)
 		if (__DEV__) {
 			console.error('[API System Error]', {
 				url: error.config?.url,

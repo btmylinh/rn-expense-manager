@@ -24,7 +24,7 @@ import AppBar from '../../components/AppBar';
 import NotificationBell from '../../components/NotificationBell';
 import StreakCard from '../../components/dashboard/StreakCard';
 import { StreakWarningModal, StreakLostModal, StreakMilestoneModal } from '../../components/StreakModals';
-import { getStreakState, StreakState, triggerStreakActivity } from '../../utils/streakHelpers';
+import { getStreakState, StreakState } from '../../utils/streakHelpers';
 import { useAuth } from '../../contexts/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import RecurringExpensesWidget from '../../components/dashboard/RecurringExpensesWidget';
@@ -33,6 +33,7 @@ import ExpenseChartWidget from '../../components/dashboard/ExpenseChartWidget';
 import CategoryChartWidget from '../../components/dashboard/CategoryChartWidget';
 import TopCategoriesWidget from '../../components/dashboard/TopCategoriesWidget';
 import RecentTransactionsWidget from '../../components/dashboard/RecentTransactionsWidget';
+import { useRecurringExpenseReminders } from '../../hooks/useRecurringExpenseReminders';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
@@ -90,6 +91,13 @@ export default function DashboardScreen({ navigation }: any) {
   
   // Track if milestone modal was already shown for current milestone
   const shownMilestonesRef = useRef<Set<number>>(new Set());
+
+  // Recurring expense reminders hook
+  const { reminders } = useRecurringExpenseReminders();
+  // Trong ngày tới hạn (daysUntilDue = 0) gọi là "tới hạn" (upcoming), không phải "quá hạn"
+  // Quá hạn chỉ khi daysUntilDue < 0 (đã qua ngày tới hạn)
+  const upcomingRemindersCount = reminders.filter(r => r.daysUntilDue >= 0).length;
+  const overdueCount = reminders.filter(r => r.daysUntilDue < 0).length;
 
   // Load data
   useEffect(() => {
@@ -235,60 +243,9 @@ export default function DashboardScreen({ navigation }: any) {
             });
           }
         }
-        let latestStreakData = newStreakData;
-        let latestStreakStatus = streakStatus;
-        
-        // Record dashboard view as streak activity
-        if (!newStreakData.todayCompleted) {
-          try {
-            await triggerStreakActivity('dashboard_view');
-            const [updatedStreak, updatedSettings, updatedHistory] = await Promise.all([
-              streakApi.getStreak(),
-              streakApi.getSettings(),
-              streakApi.getHistory({ limit: 1000 }),
-            ]);
-
-            if (updatedStreak.data?.data) {
-              const updatedHistoryList = updatedHistory.data?.data?.history || [];
-              const updatedTodayHistory = updatedHistoryList.find((h: any) => h.date.startsWith(today));
-              
-              // Recalculate 7 recent days history after activity update
-              const updatedRecent7Days: Array<{ date: string; has_activity: number }> = [];
-              for (let i = 6; i >= 0; i--) {
-                const date = new Date();
-                date.setDate(date.getDate() - i);
-                const dateStr = date.toISOString().split('T')[0];
-                const historyEntry = updatedHistoryList.find((h: any) => {
-                  const historyDate = new Date(h.date).toISOString().split('T')[0];
-                  return historyDate === dateStr;
-                });
-                updatedRecent7Days.push({
-                  date: dateStr,
-                  has_activity: historyEntry?.has_activity || 0,
-                });
-              }
-              setRecentHistory(updatedRecent7Days);
-              
-              latestStreakData = {
-                streak: {
-                  streakDays: updatedStreak.data.data.streak_days || 0,
-                  lastTransactionDate: updatedStreak.data.data.last_transaction_date,
-                },
-                settings: {
-                  bestStreak: updatedSettings.data?.data?.best_streak || 0,
-                  totalActiveDays: updatedSettings.data?.data?.total_active_days || 0,
-                },
-                todayCompleted: updatedTodayHistory?.has_activity === 1,
-              };
-              latestStreakStatus = getStreakState(latestStreakData);
-            }
-          } catch (error) {
-            // Silently fail
-          }
-        }
-
-        setStreakData(latestStreakData);
-        setStreakCardState(latestStreakStatus.isNewUser ? 'empty' : 'ready');
+        // Trigger tự động xử lý streak khi có transaction, không cần gọi API activate
+        setStreakData(newStreakData);
+        setStreakCardState(streakStatus.isNewUser ? 'empty' : 'ready');
         setStreakLoading(false);
       } else {
         setStreakData(defaultStreakPayload);
@@ -361,9 +318,41 @@ export default function DashboardScreen({ navigation }: any) {
           {
             name: 'bell-outline',
             onPress: () => navigation.navigate('Notifications'),
-          }
+          },
         ]}
       />
+      {/* Badge cảnh báo chi tiêu định kỳ sắp đến hạn - Dẫn đến trang Notifications */}
+      {(upcomingRemindersCount > 0 || overdueCount > 0) && (
+        <TouchableOpacity
+          onPress={() => navigation.navigate('Notifications')}
+          style={[styles.reminderBanner, { 
+            backgroundColor: overdueCount > 0 ? theme.colors.errorContainer : theme.colors.primaryContainer,
+            marginHorizontal: 16,
+            marginTop: 8,
+          }]}
+        >
+          <MaterialCommunityIcons
+            name={overdueCount > 0 ? 'alert-circle' : 'bell-ring'}
+            size={20}
+            color={overdueCount > 0 ? theme.colors.onErrorContainer : theme.colors.onPrimaryContainer}
+            style={{ marginRight: 8 }}
+          />
+          <Text style={[styles.reminderBannerText, { 
+            color: overdueCount > 0 ? theme.colors.onErrorContainer : theme.colors.onPrimaryContainer 
+          }]}>
+            {overdueCount > 0 
+              ? `${overdueCount} chi tiêu định kỳ quá hạn`
+              : upcomingRemindersCount > 0
+              ? `${upcomingRemindersCount} chi tiêu định kỳ ${reminders.some(r => r.daysUntilDue === 0 && r.expense.frequency === 'daily') ? 'cần thanh toán hôm nay' : 'sắp đến hạn'}`
+              : ''}
+          </Text>
+          <MaterialCommunityIcons
+            name="chevron-right"
+            size={20}
+            color={overdueCount > 0 ? theme.colors.onErrorContainer : theme.colors.onPrimaryContainer}
+          />
+        </TouchableOpacity>
+      )}
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Streak Section */}
@@ -803,6 +792,19 @@ const styles = StyleSheet.create({
   transactionAmount: {
     fontSize: 16,
     fontWeight: '700',
+  },
+  reminderBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  reminderBannerText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
   },
   emptyList: {
     paddingVertical: 32,
